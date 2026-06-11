@@ -42,17 +42,40 @@ assert.match(prompt, /A1: Backend uses Node 22/);
 assert.match(prompt, /D1: Build as a Pi extension first/);
 assert.match(prompt, /hard/);
 
-const widget = mod.formatBoardWidget(withDecision, { maxItems: 5 });
+const widgetDecisionOne = mod.addBoardItem(withAssumption, {
+	kind: "decision",
+	text: "First decision",
+	status: "accepted",
+	strength: "soft",
+	source: "user",
+});
+const widgetDecisionTwo = mod.addBoardItem(widgetDecisionOne, {
+	kind: "decision",
+	text: "Second decision",
+	status: "accepted",
+	strength: "soft",
+	source: "user",
+});
+const widgetBoard = mod.addBoardItem(widgetDecisionTwo, {
+	kind: "assumption",
+	text: "Second assumption",
+	status: "accepted",
+	strength: "soft",
+	source: "user",
+});
+const widget = mod.formatBoardWidget(widgetBoard, { maxItems: 5 });
 assert.deepEqual(
 	widget,
 	[
-		"Board v2 • 1 assumption • 1 decision • 1 hard constraint",
-		"Decisions (1)",
-		"! D1 Build as a Pi extension first",
-		"Assumptions (1)",
-		"• A1 Backend uses Node 22",
+		"Board v4 • 2 assumptions • 2 decisions • 0 hard constraints",
+		"Decisions (2)",
+		"• [D1] First decision",
+		"• [D2] Second decision",
+		"Assumptions (2)",
+		"• [A1] Backend uses Node 22",
+		"• [A2] Second assumption",
 	],
-	"widget groups decisions and assumptions under explicit section headings",
+	"widget groups sections, sorts ids ascending, and renders ids as bracketed keys",
 );
 
 const rejected = mod.updateBoardItem(withDecision, "A1", { status: "rejected" });

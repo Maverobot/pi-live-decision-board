@@ -229,7 +229,9 @@ export function formatBoardWidget(board: BoardState, options: { maxItems?: numbe
 }
 
 function compareWidgetItems(a: BoardItem, b: BoardItem): number {
-	return a.strength === b.strength ? b.version - a.version : a.strength === "hard" ? -1 : 1;
+	const aNumber = Number.parseInt(a.id.slice(1), 10);
+	const bNumber = Number.parseInt(b.id.slice(1), 10);
+	return Number.isFinite(aNumber) && Number.isFinite(bNumber) ? aNumber - bNumber : a.id.localeCompare(b.id);
 }
 
 function appendWidgetSection(lines: string[], label: string, items: BoardItem[], remainingItems: number): number {
@@ -238,7 +240,7 @@ function appendWidgetSection(lines: string[], label: string, items: BoardItem[],
 	lines.push(`${label} (${items.length})`);
 	for (const item of visibleItems) {
 		const marker = item.strength === "hard" ? "!" : "•";
-		lines.push(`${marker} ${item.id} ${item.text}`);
+		lines.push(`${marker} [${item.id}] ${item.text}`);
 	}
 	return remainingItems - visibleItems.length;
 }
