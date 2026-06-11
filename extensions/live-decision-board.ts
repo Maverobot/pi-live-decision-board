@@ -685,6 +685,7 @@ function getCustomType(message: unknown): string {
 export default function liveDecisionBoard(pi: ExtensionAPI): void {
 	let board = createEmptyBoard();
 	let lastInjectedBoardVersion = 0;
+	let boardEpoch = 0;
 	let widgetVisible = true;
 
 	function persist(): void {
@@ -717,6 +718,7 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 		if (next === board) return { changed: false, previousVersion: board.version };
 		const previousVersion = board.version;
 		board = next;
+		boardEpoch += 1;
 		persist();
 		updateUi(ctx);
 		notifyBoardChanged(previousVersion, ctx, source);
@@ -776,16 +778,19 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 		} as ContextMessage;
 	}
 
-	pi.on("session_start", async (_event, ctx) => {
+	function restoreBoard(ctx: ExtensionContext): void {
 		board = restoreBoardFromEntries(ctx.sessionManager.getBranch() as SessionEntryLike[]);
 		lastInjectedBoardVersion = 0;
+		boardEpoch += 1;
 		updateUi(ctx);
+	}
+
+	pi.on("session_start", async (_event, ctx) => {
+		restoreBoard(ctx);
 	});
 
 	pi.on("session_tree", async (_event, ctx) => {
-		board = restoreBoardFromEntries(ctx.sessionManager.getBranch() as SessionEntryLike[]);
-		lastInjectedBoardVersion = 0;
-		updateUi(ctx);
+		restoreBoard(ctx);
 	});
 
 	pi.registerCommand("board-snapshot", {
@@ -866,12 +871,17 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 	pi.registerCommand("board-clear", {
 		description: "Clear the live board after confirmation",
 		handler: async (_args, ctx) => {
+			const baseEpoch = boardEpoch;
 			if (ctx.hasUI) {
 				const confirmed = await ctx.ui.confirm(
 					"Clear Live Decision Board?",
 					"This clears assumptions and decisions for this branch.",
 				);
 				if (!confirmed) return;
+				if (boardEpoch !== baseEpoch) {
+					ctx.ui.notify("Live Decision Board changed while confirmation was open; rerun /board-clear on the latest board.", "warning");
+					return;
+				}
 			}
 			safeApplyBoard(ctx, "Cleared board", () => clearBoard(board));
 		},
@@ -882,11 +892,11 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 		handler: async (_args, ctx) => {
 			if (!ctx.hasUI) return ctx.ui.notify("/board requires UI mode", "error");
 			const baseBoard = board;
-			const baseVersion = baseBoard.version;
+			const baseEpoch = boardEpoch;
 			const initial = serializeBoardMarkdown(baseBoard);
 			const edited = await ctx.ui.editor("Edit Live Decision Board", initial);
 			if (!edited || edited.trim() === initial.trim()) return;
-			if (board.version !== baseVersion) {
+			if (boardEpoch !== baseEpoch) {
 				ctx.ui.notify("Live Decision Board changed while editor was open; reopen /board and apply your edit to the latest board.", "warning");
 				return;
 			}

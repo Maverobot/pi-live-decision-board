@@ -306,4 +306,152 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 	assert.match(latestNotification, /changed while editor was open/, "stale /board editor saves should notify the user to reopen");
 }
 
+{
+	const localCommands = new Map();
+	const localEvents = new Map();
+	const localEntries = [];
+	let latestNotification = "";
+	let localBranchEntries = [];
+	let resolveEditor;
+	let editorInitial = "";
+	const editorResult = new Promise((resolve) => {
+		resolveEditor = resolve;
+	});
+	const sameVersionHardBoard = {
+		version: 1,
+		hardDecisionBarrierVersion: 1,
+		nextAssumptionId: 1,
+		nextDecisionId: 2,
+		items: [
+			{
+				id: "D1",
+				kind: "decision",
+				text: "Same-version hard decision",
+				status: "accepted",
+				strength: "hard",
+				source: "user",
+				version: 1,
+				createdAt: 1,
+				updatedAt: 1,
+			},
+		],
+	};
+	const localCtx = {
+		hasUI: true,
+		isIdle: () => true,
+		sessionManager: { getBranch: () => localBranchEntries },
+		ui: {
+			theme: { fg: (_color, text) => text },
+			setStatus: () => {},
+			setWidget: () => {},
+			notify: (message) => {
+				latestNotification = message;
+			},
+			confirm: async () => true,
+			editor: async (_title, initial) => {
+				editorInitial = initial;
+				return editorResult;
+			},
+		},
+	};
+
+	extension({
+		on(eventName, callback) {
+			localEvents.set(eventName, callback);
+		},
+		registerCommand(name, def) {
+			localCommands.set(name, def);
+		},
+		registerTool() {},
+		appendEntry(customType, data) {
+			localEntries.push({ type: "custom", customType, data });
+		},
+		sendMessage() {},
+	});
+
+	await localEvents.get("session_start")({}, localCtx);
+	await localCommands.get("assume").handler("Initial assumption", localCtx);
+	const editPromise = localCommands.get("board").handler("", localCtx);
+	localBranchEntries = [{ type: "custom", customType: "live-decision-board", data: sameVersionHardBoard }];
+	await localEvents.get("session_tree")({}, localCtx);
+	const entriesBeforeStaleEditorSave = localEntries.length;
+	resolveEditor(editorInitial.replace("Initial assumption", "Same-version stale editor rewrite"));
+	await editPromise;
+	assert.equal(localEntries.length, entriesBeforeStaleEditorSave, "same-version branch changes should make open /board editor saves stale");
+	assert.match(latestNotification, /changed while editor was open/, "same-version stale /board editor saves should notify the user to reopen");
+	const blockedAfterSameVersionRestore = await localEvents.get("tool_call")({ toolName: "write", input: { path: "x", content: "y" } }, localCtx);
+	assert.equal(blockedAfterSameVersionRestore.block, true, "same-version stale /board editor saves must not drop the restored hard decision barrier");
+}
+
+{
+	const localCommands = new Map();
+	const localEvents = new Map();
+	const localEntries = [];
+	let latestNotification = "";
+	let localBranchEntries = [];
+	let resolveConfirm;
+	const confirmResult = new Promise((resolve) => {
+		resolveConfirm = resolve;
+	});
+	const sameVersionSoftBoard = {
+		version: 1,
+		hardDecisionBarrierVersion: 0,
+		nextAssumptionId: 2,
+		nextDecisionId: 1,
+		items: [
+			{
+				id: "A1",
+				kind: "assumption",
+				text: "Same-version restored assumption",
+				status: "accepted",
+				strength: "soft",
+				source: "user",
+				version: 1,
+				createdAt: 1,
+				updatedAt: 1,
+			},
+		],
+	};
+	const localCtx = {
+		hasUI: true,
+		isIdle: () => true,
+		sessionManager: { getBranch: () => localBranchEntries },
+		ui: {
+			theme: { fg: (_color, text) => text },
+			setStatus: () => {},
+			setWidget: () => {},
+			notify: (message) => {
+				latestNotification = message;
+			},
+			confirm: async () => confirmResult,
+			editor: async (_title, initial) => initial,
+		},
+	};
+
+	extension({
+		on(eventName, callback) {
+			localEvents.set(eventName, callback);
+		},
+		registerCommand(name, def) {
+			localCommands.set(name, def);
+		},
+		registerTool() {},
+		appendEntry(customType, data) {
+			localEntries.push({ type: "custom", customType, data });
+		},
+		sendMessage() {},
+	});
+
+	await localEvents.get("session_start")({}, localCtx);
+	await localCommands.get("decide").handler("Initial decision", localCtx);
+	const clearPromise = localCommands.get("board-clear").handler("", localCtx);
+	localBranchEntries = [{ type: "custom", customType: "live-decision-board", data: sameVersionSoftBoard }];
+	await localEvents.get("session_tree")({}, localCtx);
+	const entriesBeforeStaleClear = localEntries.length;
+	resolveConfirm(true);
+	await clearPromise;
+	assert.equal(localEntries.length, entriesBeforeStaleClear, "same-version branch changes should make open board-clear confirmations stale");
+	assert.match(latestNotification, /changed while confirmation was open/, "stale board-clear confirmations should notify the user to retry");
+}
+
 console.log("live decision board extension tests passed");
