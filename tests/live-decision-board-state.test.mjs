@@ -72,6 +72,12 @@ assert.match(mod.formatBoardStatus(withDecision), /Board v2 • A1 D1 • hard:1
 
 assert.equal(mod.hasUninjectedHardChanges(withDecision, 1), true, "hard changes after injected version are detected");
 assert.equal(mod.hasUninjectedHardChanges(withDecision, 2), false, "injected hard changes are not stale");
+const rejectedHard = mod.updateBoardItem(withDecision, "D1", { status: "rejected" });
+assert.equal(mod.hasUninjectedHardChanges(rejectedHard, 2), true, "rejected hard decisions remain stale until injected");
+const softenedHard = mod.updateBoardItem(withDecision, "D1", { strength: "soft" });
+assert.equal(mod.hasUninjectedHardChanges(softenedHard, 2), true, "softened hard decisions remain stale until injected");
+const clearedHard = mod.clearBoard(withDecision);
+assert.equal(mod.hasUninjectedHardChanges(clearedHard, 2), true, "cleared hard decisions remain stale until injected");
 
 const restored = mod.restoreBoardFromEntries([
 	{ type: "custom", customType: "live-decision-board", data: withAssumption },
@@ -79,22 +85,48 @@ const restored = mod.restoreBoardFromEntries([
 	{ type: "custom", customType: "live-decision-board", data: withDecision },
 ]);
 assert.deepEqual(restored, withDecision, "restore uses latest live-decision-board custom entry from supplied branch");
+const invalidRestored = mod.restoreBoardFromEntries([
+	{
+		type: "custom",
+		customType: "live-decision-board",
+		data: { version: 1, nextAssumptionId: 1, nextDecisionId: 1, items: [null] },
+	},
+]);
+assert.deepEqual(invalidRestored, mod.createEmptyBoard(), "malformed persisted board state is ignored");
 
 const markdown = mod.serializeBoardMarkdown(withDecision);
 const parsed = mod.parseBoardMarkdown(markdown.replace("soft", "hard"), withDecision);
 assert.equal(parsed.items.find((item) => item.id === "A1").strength, "hard");
 assert.equal(parsed.version, withDecision.version + 1);
 assert.equal(parsed.items.find((item) => item.id === "A1").version, parsed.version, "changed items get new item version");
+const multilineBoard = mod.addBoardItem(board, {
+	kind: "assumption",
+	text: "Line one\nline two",
+	status: "accepted",
+	strength: "soft",
+	source: "user",
+});
+assert.equal(multilineBoard.items[0].text, "Line one line two", "stored board text is single-line for markdown round-tripping");
+const multilineRoundTrip = mod.parseBoardMarkdown(mod.serializeBoardMarkdown(multilineBoard), multilineBoard);
+assert.equal(multilineRoundTrip.items[0].text, "Line one line two", "serialized multiline input parses back safely");
 
 assert.equal(mod.isMutatingToolCall("write", { path: "x" }), true);
 assert.equal(mod.isMutatingToolCall("edit", { path: "x" }), true);
 assert.equal(mod.isMutatingToolCall("bash", { command: "git diff --stat" }), false);
 assert.equal(mod.isMutatingToolCall("bash", { command: "git branch --show-current" }), false);
+assert.equal(mod.isMutatingToolCall("bash", { command: "git branch --contains HEAD" }), false);
+assert.equal(mod.isMutatingToolCall("bash", { command: "grep -E 'foo|bar' README.md" }), false);
 assert.equal(mod.isMutatingToolCall("bash", { command: "echo hi > file.txt" }), true);
 assert.equal(mod.isMutatingToolCall("bash", { command: "sed -i s/a/b/g file.txt" }), true);
 assert.equal(mod.isMutatingToolCall("bash", { command: "find . -delete" }), true);
 assert.equal(mod.isMutatingToolCall("bash", { command: "find . -exec rm {} +" }), true);
 assert.equal(mod.isMutatingToolCall("bash", { command: "git branch -D stale" }), true);
 assert.equal(mod.isMutatingToolCall("bash", { command: "git diff --output=patch.diff" }), true);
+assert.equal(mod.isMutatingToolCall("bash", { command: "git show --output=patch.diff HEAD" }), true);
+assert.equal(mod.isMutatingToolCall("bash", { command: "git log --output=log.patch -1" }), true);
+assert.equal(mod.isMutatingToolCall("bash", { command: "ls\nrm victim.txt" }), true);
+assert.equal(mod.isMutatingToolCall("bash", { command: "find . -fprintf out.txt %p" }), true);
+assert.equal(mod.isMutatingToolCall("bash", { command: "find . -fls out.txt" }), true);
+assert.equal(mod.isMutatingToolCall("bash", { command: "rg --pre=rm needle README.md" }), true);
 
 console.log("live decision board state tests passed");

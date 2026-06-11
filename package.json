@@ -19,6 +19,9 @@
     "url": "https://github.com/Maverobot/pi-live-decision-board/issues"
   },
   "homepage": "https://github.com/Maverobot/pi-live-decision-board#readme",
+  "engines": {
+    "node": ">=22.19.0"
+  },
   "scripts": {
     "test": "npm run typecheck && node tests/live-decision-board-state.test.mjs && node tests/live-decision-board-extension.test.mjs",
     "typecheck": "tsc --noEmit"

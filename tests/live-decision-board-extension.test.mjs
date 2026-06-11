@@ -57,6 +57,7 @@ for (const name of [
 	assert(commands.has(name), `${name} command should be registered`);
 }
 assert.equal(registeredTool.name, "decision_board", "decision_board tool should be registered");
+assert.equal(registeredTool.executionMode, "sequential", "decision_board runs sequentially before later tool preflights");
 
 const ctx = {
 	hasUI: true,

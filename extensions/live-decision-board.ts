@@ -7,7 +7,7 @@
  */
 
 import { StringEnum } from "@earendil-works/pi-ai";
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { ContextEvent, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 
 export type BoardKind = "assumption" | "decision";
@@ -30,6 +30,7 @@ export interface BoardItem {
 
 export interface BoardState {
 	version: number;
+	hardDecisionBarrierVersion: number;
 	nextAssumptionId: number;
 	nextDecisionId: number;
 	items: BoardItem[];
@@ -47,7 +48,7 @@ export interface NewBoardItem {
 type BoardPatch = Partial<Pick<BoardItem, "text" | "status" | "strength" | "source" | "supersedes">>;
 
 type SessionEntryLike = { type: string; customType?: string; data?: unknown };
-type MessageLike = { role?: string; customType?: string; content?: unknown; display?: boolean; timestamp?: number };
+type ContextMessage = ContextEvent["messages"][number];
 
 const CUSTOM_TYPE = "live-decision-board";
 const CONTEXT_CUSTOM_TYPE = "live-decision-board-context";
@@ -58,32 +59,60 @@ const BOARD_CONTEXT_TYPES = new Set([CONTEXT_CUSTOM_TYPE, VISIBLE_CUSTOM_TYPE, D
 const BOARD_ITEM_STATUSES: BoardStatus[] = ["proposed", "accepted", "rejected", "superseded"];
 const BOARD_ITEM_STRENGTHS: BoardStrength[] = ["soft", "hard"];
 const BOARD_ITEM_KINDS: BoardKind[] = ["assumption", "decision"];
+const BOARD_ITEM_SOURCES: BoardSource[] = ["user", "agent", "discussion-loop"];
 
 export function createEmptyBoard(): BoardState {
-	return { version: 0, nextAssumptionId: 1, nextDecisionId: 1, items: [] };
+	return { version: 0, hardDecisionBarrierVersion: 0, nextAssumptionId: 1, nextDecisionId: 1, items: [] };
 }
 
 export function clearBoard(board: BoardState): BoardState {
-	return { version: board.version + 1, nextAssumptionId: 1, nextDecisionId: 1, items: [] };
+	const nextVersion = board.version + 1;
+	return {
+		version: nextVersion,
+		hardDecisionBarrierVersion: board.items.some(isAcceptedHardItem)
+			? nextVersion
+			: getHardDecisionBarrierVersion(board),
+		nextAssumptionId: 1,
+		nextDecisionId: 1,
+		items: [],
+	};
 }
 
 function now(): number {
 	return Date.now();
 }
 
+function normalizeBoardText(text: string): string {
+	return text.replace(/\r?\n/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function isAcceptedHardItem(item: Pick<BoardItem, "status" | "strength">): boolean {
+	return item.status === "accepted" && item.strength === "hard";
+}
+
+function getHardDecisionBarrierVersion(board: BoardState): number {
+	return board.hardDecisionBarrierVersion ?? maxAcceptedHardItemVersion(board.items);
+}
+
+function maxAcceptedHardItemVersion(items: BoardItem[]): number {
+	return items.reduce((maxVersion, item) => (isAcceptedHardItem(item) ? Math.max(maxVersion, item.version) : maxVersion), 0);
+}
+
 export function addBoardItem(board: BoardState, input: NewBoardItem): BoardState {
-	const text = input.text.trim();
+	const text = normalizeBoardText(input.text);
 	if (!text) throw new Error("Board item text is required");
 
 	const nextVersion = board.version + 1;
+	const status = input.status ?? "accepted";
+	const strength = input.strength ?? "soft";
 	const id = input.kind === "assumption" ? `A${board.nextAssumptionId}` : `D${board.nextDecisionId}`;
 	const timestamp = now();
 	const item: BoardItem = {
 		id,
 		kind: input.kind,
 		text,
-		status: input.status ?? "accepted",
-		strength: input.strength ?? "soft",
+		status,
+		strength,
 		source: input.source ?? "user",
 		version: nextVersion,
 		createdAt: timestamp,
@@ -93,6 +122,7 @@ export function addBoardItem(board: BoardState, input: NewBoardItem): BoardState
 
 	return {
 		version: nextVersion,
+		hardDecisionBarrierVersion: isAcceptedHardItem(item) ? nextVersion : getHardDecisionBarrierVersion(board),
 		nextAssumptionId: input.kind === "assumption" ? board.nextAssumptionId + 1 : board.nextAssumptionId,
 		nextDecisionId: input.kind === "decision" ? board.nextDecisionId + 1 : board.nextDecisionId,
 		items: [...board.items, item],
@@ -109,7 +139,7 @@ export function updateBoardItem(board: BoardState, id: string, patch: BoardPatch
 	) as BoardPatch;
 	if (Object.keys(cleanPatch).length === 0) return board;
 
-	const text = cleanPatch.text?.trim() ?? existing.text;
+	const text = cleanPatch.text === undefined ? existing.text : normalizeBoardText(cleanPatch.text);
 	if (!text) throw new Error("Board item text is required");
 	const effective: BoardItem = { ...existing, ...cleanPatch, text };
 	const changed =
@@ -121,9 +151,11 @@ export function updateBoardItem(board: BoardState, id: string, patch: BoardPatch
 	if (!changed) return board;
 
 	const nextVersion = board.version + 1;
+	const hardDecisionChanged = isAcceptedHardItem(existing) || isAcceptedHardItem(effective);
 	return {
 		...board,
 		version: nextVersion,
+		hardDecisionBarrierVersion: hardDecisionChanged ? nextVersion : getHardDecisionBarrierVersion(board),
 		items: board.items.map((item) =>
 			item.id === normalizedId ? { ...effective, version: nextVersion, updatedAt: now() } : item,
 		),
@@ -193,25 +225,60 @@ export function formatBoardWidget(board: BoardState, options: { maxItems?: numbe
 }
 
 export function hasUninjectedHardChanges(board: BoardState, injectedVersion: number): boolean {
-	return board.items.some(
-		(item) => item.strength === "hard" && item.status === "accepted" && item.version > injectedVersion,
-	);
+	return getHardDecisionBarrierVersion(board) > injectedVersion;
 }
 
 export function restoreBoardFromEntries(entries: SessionEntryLike[]): BoardState {
 	const latest = entries.filter((entry) => entry.type === "custom" && entry.customType === CUSTOM_TYPE).at(-1);
-	return isBoardState(latest?.data) ? latest.data : createEmptyBoard();
+	return normalizeBoardState(latest?.data) ?? createEmptyBoard();
 }
 
-function isBoardState(value: unknown): value is BoardState {
-	if (!value || typeof value !== "object") return false;
+function normalizeBoardState(value: unknown): BoardState | undefined {
+	if (!value || typeof value !== "object") return undefined;
 	const candidate = value as Partial<BoardState>;
+	if (
+		!isFiniteNumber(candidate.version) ||
+		!isFiniteNumber(candidate.nextAssumptionId) ||
+		!isFiniteNumber(candidate.nextDecisionId) ||
+		!Array.isArray(candidate.items) ||
+		(candidate.hardDecisionBarrierVersion !== undefined && !isFiniteNumber(candidate.hardDecisionBarrierVersion))
+	) {
+		return undefined;
+	}
+	if (!candidate.items.every(isBoardItem)) return undefined;
+
+	const items = candidate.items.map((item) => ({ ...item, text: normalizeBoardText(item.text) }));
+	return {
+		version: candidate.version,
+		hardDecisionBarrierVersion: candidate.hardDecisionBarrierVersion ?? maxAcceptedHardItemVersion(items),
+		nextAssumptionId: candidate.nextAssumptionId,
+		nextDecisionId: candidate.nextDecisionId,
+		items,
+	};
+}
+
+function isBoardItem(value: unknown): value is BoardItem {
+	if (!value || typeof value !== "object") return false;
+	const item = value as Partial<BoardItem>;
 	return (
-		typeof candidate.version === "number" &&
-		typeof candidate.nextAssumptionId === "number" &&
-		typeof candidate.nextDecisionId === "number" &&
-		Array.isArray(candidate.items)
+		typeof item.id === "string" &&
+		/^[AD]\d+$/.test(item.id) &&
+		isBoardKind(item.kind ?? "") &&
+		((item.id.startsWith("A") && item.kind === "assumption") || (item.id.startsWith("D") && item.kind === "decision")) &&
+		typeof item.text === "string" &&
+		normalizeBoardText(item.text).length > 0 &&
+		isBoardStatus(item.status ?? "") &&
+		isBoardStrength(item.strength ?? "") &&
+		isBoardSource(item.source ?? "") &&
+		isFiniteNumber(item.version) &&
+		isFiniteNumber(item.createdAt) &&
+		isFiniteNumber(item.updatedAt) &&
+		(item.supersedes === undefined || typeof item.supersedes === "string")
 	);
+}
+
+function isFiniteNumber(value: unknown): value is number {
+	return typeof value === "number" && Number.isFinite(value);
 }
 
 export function serializeBoardMarkdown(board: BoardState): string {
@@ -263,6 +330,9 @@ export function parseBoardMarkdown(markdown: string, previousBoard: BoardState):
 
 	return {
 		version: nextVersion,
+		hardDecisionBarrierVersion: hardDecisionBoundaryChanged(previousBoard.items, items)
+			? nextVersion
+			: getHardDecisionBarrierVersion(previousBoard),
 		nextAssumptionId: maxAssumptionId + 1,
 		nextDecisionId: maxDecisionId + 1,
 		items,
@@ -287,7 +357,8 @@ function parseMarkdownItem(input: {
 	if (!isBoardStrength(input.strength)) {
 		throw new Error(`Invalid board item strength on line ${input.lineIndex + 1}: ${input.strength}`);
 	}
-	if (!input.text) throw new Error(`Missing board item text on line ${input.lineIndex + 1}`);
+	const text = normalizeBoardText(input.text);
+	if (!text) throw new Error(`Missing board item text on line ${input.lineIndex + 1}`);
 	if ((id.startsWith("A") && input.kind !== "assumption") || (id.startsWith("D") && input.kind !== "decision")) {
 		throw new Error(`Board item ${id} prefix does not match kind ${input.kind}`);
 	}
@@ -296,7 +367,7 @@ function parseMarkdownItem(input: {
 	const base: BoardItem = previous ?? {
 		id,
 		kind: input.kind,
-		text: input.text,
+		text,
 		status: input.status,
 		strength: input.strength,
 		source: "user",
@@ -308,19 +379,48 @@ function parseMarkdownItem(input: {
 	const materiallyChanged =
 		!previous ||
 		previous.kind !== input.kind ||
-		previous.text !== input.text ||
+		previous.text !== text ||
 		previous.status !== input.status ||
 		previous.strength !== input.strength;
 
 	return {
 		...base,
 		kind: input.kind,
-		text: input.text,
+		text,
 		status: input.status,
 		strength: input.strength,
 		version: materiallyChanged ? input.nextVersion : base.version,
 		updatedAt: materiallyChanged ? input.timestamp : base.updatedAt,
 	};
+}
+
+function hardDecisionBoundaryChanged(previousItems: BoardItem[], nextItems: BoardItem[]): boolean {
+	const nextById = new Map(nextItems.map((item) => [item.id, item]));
+	const previousById = new Map(previousItems.map((item) => [item.id, item]));
+
+	for (const previous of previousItems) {
+		if (!isAcceptedHardItem(previous)) continue;
+		const next = nextById.get(previous.id);
+		if (!next || !isSameDecisionBoundary(previous, next)) return true;
+	}
+
+	for (const next of nextItems) {
+		if (!isAcceptedHardItem(next)) continue;
+		const previous = previousById.get(next.id);
+		if (!previous || !isSameDecisionBoundary(previous, next)) return true;
+	}
+
+	return false;
+}
+
+function isSameDecisionBoundary(left: BoardItem, right: BoardItem): boolean {
+	return (
+		left.kind === right.kind &&
+		left.text === right.text &&
+		left.status === right.status &&
+		left.strength === right.strength &&
+		left.supersedes === right.supersedes
+	);
 }
 
 function isBoardKind(value: string): value is BoardKind {
@@ -335,12 +435,16 @@ function isBoardStrength(value: string): value is BoardStrength {
 	return BOARD_ITEM_STRENGTHS.includes(value as BoardStrength);
 }
 
-export function isReadOnlyBashCommand(command: string): boolean {
-	const trimmed = command.trim();
-	if (!trimmed) return true;
-	if (/[;&|`$()<>]/.test(trimmed)) return false;
+function isBoardSource(value: string): value is BoardSource {
+	return BOARD_ITEM_SOURCES.includes(value as BoardSource);
+}
 
-	const [program, ...args] = trimmed.split(/\s+/);
+export function isReadOnlyBashCommand(command: string): boolean {
+	const tokens = parseSingleSimpleCommand(command);
+	if (!tokens) return false;
+	if (tokens.length === 0) return true;
+
+	const [program, ...args] = tokens;
 	if (!program) return true;
 
 	switch (program) {
@@ -351,10 +455,11 @@ export function isReadOnlyBashCommand(command: string): boolean {
 		case "head":
 		case "tail":
 		case "grep":
-		case "rg":
 			return true;
+		case "rg":
+			return isReadOnlyRipgrepCommand(args);
 		case "find":
-			return !args.some((arg) => ["-delete", "-exec", "-execdir", "-ok", "-okdir", "-fprint", "-fprint0"].includes(arg));
+			return isReadOnlyFindCommand(args);
 		case "git":
 			return isReadOnlyGitCommand(args);
 		case "npm":
@@ -367,21 +472,109 @@ export function isReadOnlyBashCommand(command: string): boolean {
 	}
 }
 
+function parseSingleSimpleCommand(command: string): string[] | undefined {
+	const trimmed = command.trim();
+	if (!trimmed) return [];
+	if (/[\r\n]/.test(trimmed)) return undefined;
+
+	const tokens: string[] = [];
+	let current = "";
+	let quote: "'" | '"' | undefined;
+	let escaped = false;
+
+	for (const char of trimmed) {
+		if (escaped) {
+			current += char;
+			escaped = false;
+			continue;
+		}
+
+		if (char === "\\" && quote !== "'") {
+			escaped = true;
+			continue;
+		}
+
+		if (quote) {
+			if (char === quote) {
+				quote = undefined;
+				continue;
+			}
+			if (quote === '"' && (char === "$" || char === "`")) return undefined;
+			current += char;
+			continue;
+		}
+
+		if (char === "'" || char === '"') {
+			quote = char;
+			continue;
+		}
+		if (/\s/.test(char)) {
+			if (current) {
+				tokens.push(current);
+				current = "";
+			}
+			continue;
+		}
+		if (";&|`$()<>".includes(char)) return undefined;
+		current += char;
+	}
+
+	if (quote || escaped) return undefined;
+	if (current) tokens.push(current);
+	return tokens;
+}
+
+function isReadOnlyRipgrepCommand(args: string[]): boolean {
+	return !args.some((arg) => arg === "--pre" || arg.startsWith("--pre=") || arg === "--pre-glob" || arg.startsWith("--pre-glob="));
+}
+
+function isReadOnlyFindCommand(args: string[]): boolean {
+	const mutatingActions = new Set(["-delete", "-exec", "-execdir", "-ok", "-okdir", "-fprint", "-fprint0", "-fprintf", "-fls"]);
+	return !args.some((arg) => mutatingActions.has(arg));
+}
+
+function hasGitOutputOption(args: string[]): boolean {
+	return args.some((arg) => arg === "--output" || arg.startsWith("--output="));
+}
+
 function isReadOnlyGitCommand(args: string[]): boolean {
+	if (hasGitOutputOption(args)) return false;
 	const subcommand = args[0] ?? "";
 	const rest = args.slice(1);
 	if (["status", "log", "show"].includes(subcommand)) return true;
-	if (subcommand === "diff") return !rest.some((arg) => arg === "--output" || arg.startsWith("--output="));
-	if (subcommand === "branch") {
-		return rest.length === 0 || rest.every((arg) => ["--show-current", "--contains", "--merged", "--no-merged", "-a", "--all", "-r", "-v", "-vv"].includes(arg));
-	}
+	if (subcommand === "diff") return true;
+	if (subcommand === "branch") return isReadOnlyGitBranchCommand(rest);
 	return false;
+}
+
+function isReadOnlyGitBranchCommand(args: string[]): boolean {
+	let index = 0;
+	while (index < args.length) {
+		const arg = args[index];
+		if (["--show-current", "-a", "--all", "-r", "-v", "-vv"].includes(arg)) {
+			index += 1;
+			continue;
+		}
+		if (["--contains", "--merged", "--no-merged"].includes(arg)) {
+			index += 1;
+			if (args[index] && !args[index].startsWith("-")) index += 1;
+			continue;
+		}
+		return false;
+	}
+	return true;
 }
 
 export function isMutatingToolCall(toolName: string, input: Record<string, unknown>): boolean {
 	if (toolName === "edit" || toolName === "write") return true;
 	if (toolName !== "bash") return false;
 	return !isReadOnlyBashCommand(String(input.command ?? ""));
+}
+
+function getCustomType(message: unknown): string {
+	if (!message || typeof message !== "object" || !("customType" in message)) return "";
+	const customType = (message as { customType?: unknown }).customType;
+	return typeof customType === "string" ? customType : "";
 }
 
 export default function liveDecisionBoard(pi: ExtensionAPI): void {
@@ -459,7 +652,7 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 		};
 	}
 
-	function boardContextForProvider() {
+	function boardContextForProvider(): ContextMessage {
 		return {
 			role: "custom" as const,
 			customType: CONTEXT_CUSTOM_TYPE,
@@ -467,7 +660,7 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 			display: false,
 			details: { boardVersion: board.version },
 			timestamp: Date.now(),
-		};
+		} as ContextMessage;
 	}
 
 	pi.on("session_start", async (_event, ctx) => {
@@ -577,6 +770,7 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 			"Use decision_board when you make a meaningful project assumption or implementation decision.",
 			"Use decision_board before acting on a decision that is not already recorded in the live board.",
 		],
+		executionMode: "sequential",
 		parameters: Type.Object({
 			action: StringEnum(["list", "add", "update", "set_status", "set_strength", "supersede"] as const),
 			id: Type.Optional(Type.String()),
@@ -625,15 +819,12 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 		},
 	});
 
-	pi.on(
-		"context",
-		(async (event: { messages: MessageLike[] }) => {
-			const filtered = event.messages.filter((message) => !BOARD_CONTEXT_TYPES.has(message.customType ?? ""));
-			if (board.items.length === 0) return { messages: filtered };
-			lastInjectedBoardVersion = board.version;
-			return { messages: [boardContextForProvider(), ...filtered] };
-		}) as any,
-	);
+	pi.on("context", async (event) => {
+		const filtered = event.messages.filter((message) => !BOARD_CONTEXT_TYPES.has(getCustomType(message)));
+		if (board.items.length === 0) return { messages: filtered };
+		lastInjectedBoardVersion = board.version;
+		return { messages: [boardContextForProvider(), ...filtered] };
+	});
 
 	pi.on("before_agent_start", async () => {
 		if (board.items.length === 0) return;
