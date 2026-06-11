@@ -276,7 +276,7 @@ function isBoardItem(value: unknown): value is BoardItem {
 		isBoardStatus(item.status ?? "") &&
 		isBoardStrength(item.strength ?? "") &&
 		isBoardSource(item.source ?? "") &&
-		isNonNegativeInteger(item.version) &&
+		isPositiveInteger(item.version) &&
 		isNonNegativeFiniteNumber(item.createdAt) &&
 		isNonNegativeFiniteNumber(item.updatedAt) &&
 		(item.supersedes === undefined || typeof item.supersedes === "string")
@@ -547,12 +547,20 @@ function isReadOnlyFindCommand(args: string[]): boolean {
 	return !args.some((arg) => mutatingActions.has(arg));
 }
 
-function hasGitOutputOption(args: string[]): boolean {
-	return args.some((arg) => arg === "--output" || arg.startsWith("--output="));
+function hasGitUnsafeOption(args: string[]): boolean {
+	return args.some(
+		(arg) =>
+			arg === "--output" ||
+			arg.startsWith("--output=") ||
+			arg === "--ext-diff" ||
+			arg.startsWith("--ext-diff=") ||
+			arg === "--textconv" ||
+			arg.startsWith("--textconv="),
+	);
 }
 
 function isReadOnlyGitCommand(args: string[]): boolean {
-	if (hasGitOutputOption(args)) return false;
+	if (hasGitUnsafeOption(args)) return false;
 	const subcommand = args[0] ?? "";
 	const rest = args.slice(1);
 	if (["status", "log", "show"].includes(subcommand)) return true;

@@ -119,6 +119,14 @@ const futureItemVersionRestored = mod.restoreBoardFromEntries([
 	},
 ]);
 assert.deepEqual(futureItemVersionRestored, mod.createEmptyBoard(), "item versions newer than the board are rejected");
+const zeroVersionHardRestored = mod.restoreBoardFromEntries([
+	{
+		type: "custom",
+		customType: "live-decision-board",
+		data: { ...withDecision, version: 0, hardDecisionBarrierVersion: 0, items: [{ ...withDecision.items[1], version: 0 }] },
+	},
+]);
+assert.deepEqual(zeroVersionHardRestored, mod.createEmptyBoard(), "zero-version restored hard items are rejected");
 
 const markdown = mod.serializeBoardMarkdown(withDecision);
 const parsed = mod.parseBoardMarkdown(markdown.replace("soft", "hard"), withDecision);
@@ -150,6 +158,11 @@ assert.equal(mod.isMutatingToolCall("bash", { command: "git branch -D stale" }),
 assert.equal(mod.isMutatingToolCall("bash", { command: "git diff --output=patch.diff" }), true);
 assert.equal(mod.isMutatingToolCall("bash", { command: "git show --output=patch.diff HEAD" }), true);
 assert.equal(mod.isMutatingToolCall("bash", { command: "git log --output=log.patch -1" }), true);
+assert.equal(mod.isMutatingToolCall("bash", { command: "git diff --ext-diff" }), true);
+assert.equal(mod.isMutatingToolCall("bash", { command: "git show --ext-diff HEAD" }), true);
+assert.equal(mod.isMutatingToolCall("bash", { command: "git log --ext-diff -p -1" }), true);
+assert.equal(mod.isMutatingToolCall("bash", { command: "git diff --textconv" }), true);
+assert.equal(mod.isMutatingToolCall("bash", { command: "git diff --no-ext-diff --no-textconv" }), false);
 assert.equal(mod.isMutatingToolCall("bash", { command: "ls\nrm victim.txt" }), true);
 assert.equal(mod.isMutatingToolCall("bash", { command: "find . -fprintf out.txt %p" }), true);
 assert.equal(mod.isMutatingToolCall("bash", { command: "find . -fls out.txt" }), true);
