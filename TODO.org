@@ -1,0 +1,11 @@
+- [x] Add colors to keywords to increase readability
+- [x] Fix indentation, check how coctostan/pi-superpowers:plan-tracker.ts does it.
+- [x] Add line separator for the board to stand out as an individual section, not mixed with neighbouring widgets.
+- [x] Redundant board info at the bottom of the cli:
+
+ #+begin_src
+
+   ~/code/pi-config (main)
+   ↑3.5M ↓132k R48M CH99.7% $45.400 (sub) 71.6%/272k (auto)                                                                                                                             (openai-codex) gpt-5.5 • xhigh
+   Board v6 • 2 assumptions • 4 decisions • 0 hard constraints
+ #+end_src

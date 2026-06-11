@@ -18,7 +18,7 @@ const events = new Map();
 const entries = [];
 let registeredTool;
 let latestWidget;
-let latestStatus;
+let latestStatus = "unset";
 let latestMessage;
 let latestSendOptions;
 let branchEntries = [];
@@ -59,6 +59,18 @@ for (const name of [
 assert.equal(registeredTool.name, "decision_board", "decision_board tool should be registered");
 assert.equal(registeredTool.executionMode, "sequential", "decision_board runs sequentially before later tool preflights");
 
+const testTheme = {
+	fg: (color, text) => `<${color}>${text}</${color}>`,
+};
+
+function renderLatestWidgetText() {
+	assert.equal(typeof latestWidget, "function", "board widget should use a custom component factory like plan-tracker");
+	const rendered = latestWidget(undefined, testTheme);
+	assert.equal(rendered.paddingX, 0, "board widget text should use zero horizontal padding for plan-tracker alignment");
+	assert.equal(rendered.paddingY, 0, "board widget text should use zero vertical padding for plan-tracker alignment");
+	return rendered.text;
+}
+
 const ctx = {
 	hasUI: true,
 	isIdle: () => true,
@@ -85,9 +97,13 @@ await commands.get("decide").handler("Build as a Pi extension first", ctx);
 await commands.get("board-show").handler("", ctx);
 
 assert.equal(entries.at(-1).data.version, 2, "commands persist board changes");
-assert(latestWidget.some((line) => line.includes("A1")), "assume command updates widget");
-assert(latestWidget.some((line) => line.includes("D1")), "decide command updates widget");
-assert.match(latestStatus, /Board v2/);
+const widgetText = renderLatestWidgetText();
+assert(!widgetText.startsWith(" "), "board widget should not add leading indentation in its own text");
+assert.match(widgetText.split("\n")[0], /Live Decision Board/, "board widget starts with a visible separator title");
+assert.match(widgetText, /<accent>Live Decision Board<\/accent>/, "board widget title is colorized");
+assert.match(widgetText, /\[A1\]/, "assume command updates widget with a bracketed key");
+assert.match(widgetText, /\[D1\]/, "decide command updates widget with a bracketed key");
+assert.equal(latestStatus, undefined, "board summary should not be duplicated in the footer status");
 assert.match(latestMessage.content, /Build as a Pi extension first/);
 const initialBoard = entries.at(-1).data;
 

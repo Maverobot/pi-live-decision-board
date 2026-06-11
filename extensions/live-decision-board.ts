@@ -7,7 +7,8 @@
  */
 
 import { StringEnum } from "@earendil-works/pi-ai";
-import type { ContextEvent, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { ContextEvent, ExtensionAPI, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
+import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 
 export type BoardKind = "assumption" | "decision";
@@ -211,6 +212,38 @@ export function formatBoardStatus(board: BoardState): string {
 
 function pluralize(count: number, label: string): string {
 	return `${count} ${label}${count === 1 ? "" : "s"}`;
+}
+
+function formatBoardStatusForWidget(board: BoardState, theme: Theme): string {
+	const assumptions = board.items.filter((item) => item.kind === "assumption").length;
+	const decisions = board.items.filter((item) => item.kind === "decision").length;
+	const hardCount = board.items.filter((item) => item.status === "accepted" && item.strength === "hard").length;
+	return [
+		theme.fg("muted", "Board"),
+		theme.fg("accent", `v${board.version}`),
+		theme.fg("success", pluralize(assumptions, "assumption")),
+		theme.fg("success", pluralize(decisions, "decision")),
+		theme.fg(hardCount > 0 ? "warning" : "dim", pluralize(hardCount, "hard constraint")),
+	].join(" • ");
+}
+
+function formatBoardWidgetText(board: BoardState, theme: Theme): string {
+	const [, ...bodyLines] = formatBoardWidget(board);
+	return [renderBoardSeparator(theme), formatBoardStatusForWidget(board, theme), ...bodyLines.map((line) => colorizeWidgetLine(line, theme))].join("\n");
+}
+
+function renderBoardSeparator(theme: Theme): string {
+	return `${theme.fg("dim", "────────────────")} ${theme.fg("accent", "Live Decision Board")} ${theme.fg("dim", "────────────────")}`;
+}
+
+function colorizeWidgetLine(line: string, theme: Theme): string {
+	const section = /^(Decisions|Assumptions) \((\d+)\)$/.exec(line);
+	if (section) return `${theme.fg("accent", section[1])} ${theme.fg("muted", `(${section[2]})`)}`;
+
+	const item = /^([!•]) \[([AD]\d+)] (.*)$/.exec(line);
+	if (!item) return line;
+	const marker = item[1] === "!" ? theme.fg("warning", "!") : theme.fg("dim", "•");
+	return `${marker} ${theme.fg("accent", `[${item[2]}]`)} ${theme.fg("muted", item[3])}`;
 }
 
 export function formatBoardWidget(board: BoardState, options: { maxItems?: number } = {}): string[] {
@@ -629,13 +662,12 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 	}
 
 	function updateUi(ctx: ExtensionContext): void {
+		ctx.ui.setStatus("decision-board", undefined);
 		if (board.items.length === 0) {
-			ctx.ui.setStatus("decision-board", undefined);
 			ctx.ui.setWidget("decision-board", undefined);
 			return;
 		}
-		ctx.ui.setStatus("decision-board", ctx.ui.theme.fg("accent", formatBoardStatus(board)));
-		ctx.ui.setWidget("decision-board", formatBoardWidget(board));
+		ctx.ui.setWidget("decision-board", (_tui, theme) => new Text(formatBoardWidgetText(board, theme), 0, 0));
 	}
 
 	function notifyBoardChanged(previousVersion: number, ctx: ExtensionContext, source: BoardSource): void {
