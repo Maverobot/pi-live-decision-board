@@ -1,0 +1,40 @@
+{
+  "name": "pi-live-decision-board",
+  "version": "0.1.0",
+  "description": "Pi extension for a live, mutable assumptions and decisions board injected into agent context.",
+  "type": "module",
+  "license": "MIT",
+  "keywords": [
+    "pi-package",
+    "pi",
+    "coding-agent",
+    "extension",
+    "decision-board"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Maverobot/pi-live-decision-board.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Maverobot/pi-live-decision-board/issues"
+  },
+  "homepage": "https://github.com/Maverobot/pi-live-decision-board#readme",
+  "scripts": {
+    "test": "node tests/live-decision-board-state.test.mjs && node tests/live-decision-board-extension.test.mjs"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "typebox": "*"
+  },
+  "pi": {
+    "extensions": [
+      "./extensions"
+    ]
+  },
+  "devDependencies": {
+    "@earendil-works/pi-ai": "0.79.1",
+    "@earendil-works/pi-coding-agent": "0.79.1",
+    "typebox": "1.1.38"
+  }
+}
