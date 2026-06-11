@@ -93,6 +93,32 @@ const invalidRestored = mod.restoreBoardFromEntries([
 	},
 ]);
 assert.deepEqual(invalidRestored, mod.createEmptyBoard(), "malformed persisted board state is ignored");
+const restoredLowBarrier = mod.restoreBoardFromEntries([
+	{
+		type: "custom",
+		customType: "live-decision-board",
+		data: { ...withDecision, hardDecisionBarrierVersion: 0 },
+	},
+]);
+assert.equal(restoredLowBarrier.hardDecisionBarrierVersion, 2, "restored barrier is at least the hard item version");
+assert.equal(mod.hasUninjectedHardChanges(restoredLowBarrier, 0), true, "low restored barriers cannot bypass hard decisions");
+const restoredHighBarrier = mod.restoreBoardFromEntries([
+	{
+		type: "custom",
+		customType: "live-decision-board",
+		data: { ...withDecision, hardDecisionBarrierVersion: 999 },
+	},
+]);
+assert.equal(restoredHighBarrier.hardDecisionBarrierVersion, withDecision.version, "restored barrier is clamped to board version");
+assert.equal(mod.hasUninjectedHardChanges(restoredHighBarrier, withDecision.version), false, "high restored barriers do not deadlock after injection");
+const futureItemVersionRestored = mod.restoreBoardFromEntries([
+	{
+		type: "custom",
+		customType: "live-decision-board",
+		data: { ...withDecision, items: [{ ...withDecision.items[1], version: withDecision.version + 1 }] },
+	},
+]);
+assert.deepEqual(futureItemVersionRestored, mod.createEmptyBoard(), "item versions newer than the board are rejected");
 
 const markdown = mod.serializeBoardMarkdown(withDecision);
 const parsed = mod.parseBoardMarkdown(markdown.replace("soft", "hard"), withDecision);

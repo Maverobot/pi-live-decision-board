@@ -237,22 +237,28 @@ function normalizeBoardState(value: unknown): BoardState | undefined {
 	if (!value || typeof value !== "object") return undefined;
 	const candidate = value as Partial<BoardState>;
 	if (
-		!isFiniteNumber(candidate.version) ||
-		!isFiniteNumber(candidate.nextAssumptionId) ||
-		!isFiniteNumber(candidate.nextDecisionId) ||
+		!isNonNegativeInteger(candidate.version) ||
+		!isPositiveInteger(candidate.nextAssumptionId) ||
+		!isPositiveInteger(candidate.nextDecisionId) ||
 		!Array.isArray(candidate.items) ||
-		(candidate.hardDecisionBarrierVersion !== undefined && !isFiniteNumber(candidate.hardDecisionBarrierVersion))
+		(candidate.hardDecisionBarrierVersion !== undefined && !isNonNegativeInteger(candidate.hardDecisionBarrierVersion))
 	) {
 		return undefined;
 	}
 	if (!candidate.items.every(isBoardItem)) return undefined;
 
+	const version = candidate.version;
+	const nextAssumptionId = candidate.nextAssumptionId;
+	const nextDecisionId = candidate.nextDecisionId;
 	const items = candidate.items.map((item) => ({ ...item, text: normalizeBoardText(item.text) }));
+	if (items.some((item) => item.version > version)) return undefined;
+	const requiredBarrier = maxAcceptedHardItemVersion(items);
+	const restoredBarrier = candidate.hardDecisionBarrierVersion ?? requiredBarrier;
 	return {
-		version: candidate.version,
-		hardDecisionBarrierVersion: candidate.hardDecisionBarrierVersion ?? maxAcceptedHardItemVersion(items),
-		nextAssumptionId: candidate.nextAssumptionId,
-		nextDecisionId: candidate.nextDecisionId,
+		version,
+		hardDecisionBarrierVersion: Math.min(version, Math.max(restoredBarrier, requiredBarrier)),
+		nextAssumptionId,
+		nextDecisionId,
 		items,
 	};
 }
@@ -270,15 +276,23 @@ function isBoardItem(value: unknown): value is BoardItem {
 		isBoardStatus(item.status ?? "") &&
 		isBoardStrength(item.strength ?? "") &&
 		isBoardSource(item.source ?? "") &&
-		isFiniteNumber(item.version) &&
-		isFiniteNumber(item.createdAt) &&
-		isFiniteNumber(item.updatedAt) &&
+		isNonNegativeInteger(item.version) &&
+		isNonNegativeFiniteNumber(item.createdAt) &&
+		isNonNegativeFiniteNumber(item.updatedAt) &&
 		(item.supersedes === undefined || typeof item.supersedes === "string")
 	);
 }
 
-function isFiniteNumber(value: unknown): value is number {
-	return typeof value === "number" && Number.isFinite(value);
+function isNonNegativeInteger(value: unknown): value is number {
+	return typeof value === "number" && Number.isInteger(value) && value >= 0;
+}
+
+function isPositiveInteger(value: unknown): value is number {
+	return typeof value === "number" && Number.isInteger(value) && value > 0;
+}
+
+function isNonNegativeFiniteNumber(value: unknown): value is number {
+	return typeof value === "number" && Number.isFinite(value) && value >= 0;
 }
 
 export function serializeBoardMarkdown(board: BoardState): string {
@@ -821,13 +835,15 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 
 	pi.on("context", async (event) => {
 		const filtered = event.messages.filter((message) => !BOARD_CONTEXT_TYPES.has(getCustomType(message)));
-		if (board.items.length === 0) return { messages: filtered };
+		if (board.items.length === 0 && !hasUninjectedHardChanges(board, lastInjectedBoardVersion)) {
+			return { messages: filtered };
+		}
 		lastInjectedBoardVersion = board.version;
 		return { messages: [boardContextForProvider(), ...filtered] };
 	});
 
 	pi.on("before_agent_start", async () => {
-		if (board.items.length === 0) return;
+		if (board.items.length === 0 && getHardDecisionBarrierVersion(board) === 0) return;
 		return { message: boardContextForSession() };
 	});
 

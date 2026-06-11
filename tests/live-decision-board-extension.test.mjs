@@ -184,4 +184,19 @@ await events.get("session_tree")({}, ctx);
 const blockedAfterRestore = await events.get("tool_call")({ toolName: "write", input: { path: "x", content: "y" } }, ctx);
 assert.equal(blockedAfterRestore.block, true, "restoring a branch resets injected version before writes");
 
+await events.get("context")({ messages: [{ role: "user", content: "Sync restored board", timestamp: 5 }] }, ctx);
+await commands.get("board-clear").handler("", ctx);
+assert.equal(entries.at(-1).data.items.length, 0, "board-clear persists an empty board");
+const clearContextResult = await events.get("context")(
+	{ messages: [{ role: "user", content: "Continue after clear", timestamp: 6 }] },
+	ctx,
+);
+assert.equal(
+	clearContextResult.messages[0].customType,
+	"live-decision-board-context",
+	"cleared hard-decision boards still inject once to satisfy the stale barrier",
+);
+const allowedAfterClearInjection = await events.get("tool_call")({ toolName: "write", input: { path: "x", content: "y" } }, ctx);
+assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board releases the stale hard-decision guard");
+
 console.log("live decision board extension tests passed");
