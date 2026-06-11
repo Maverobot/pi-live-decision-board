@@ -206,7 +206,11 @@ export function formatBoardStatus(board: BoardState): string {
 	const assumptions = board.items.filter((item) => item.kind === "assumption").length;
 	const decisions = board.items.filter((item) => item.kind === "decision").length;
 	const hardCount = board.items.filter((item) => item.status === "accepted" && item.strength === "hard").length;
-	return `Board v${board.version} • A${assumptions} D${decisions} • hard:${hardCount}`;
+	return `Board v${board.version} • ${pluralize(assumptions, "assumption")} • ${pluralize(decisions, "decision")} • ${pluralize(hardCount, "hard constraint")}`;
+}
+
+function pluralize(count: number, label: string): string {
+	return `${count} ${label}${count === 1 ? "" : "s"}`;
 }
 
 export function formatBoardWidget(board: BoardState, options: { maxItems?: number } = {}): string[] {

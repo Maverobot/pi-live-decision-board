@@ -68,7 +68,7 @@ const cleared = mod.clearBoard(withDecision);
 assert.equal(cleared.version, 3, "clearing keeps versions monotonic");
 assert.deepEqual(cleared.items, []);
 
-assert.match(mod.formatBoardStatus(withDecision), /Board v2 • A1 D1 • hard:1/);
+assert.match(mod.formatBoardStatus(withDecision), /Board v2 • 1 assumption • 1 decision • 1 hard constraint/);
 
 assert.equal(mod.hasUninjectedHardChanges(withDecision, 1), true, "hard changes after injected version are detected");
 assert.equal(mod.hasUninjectedHardChanges(withDecision, 2), false, "injected hard changes are not stale");
