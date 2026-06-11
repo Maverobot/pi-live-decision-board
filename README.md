@@ -13,7 +13,7 @@ pi install git:github.com/Maverobot/pi-live-decision-board
 Or test from a local checkout:
 
 ```bash
-pi -e ./extensions/live-decision-board.ts
+pi -e .
 ```
 
 ## Commands
@@ -27,6 +27,7 @@ pi -e ./extensions/live-decision-board.ts
 | `/board-hard <id>` | Mark an item as hard |
 | `/board-soft <id>` | Mark an item as soft |
 | `/board-reject <id>` | Reject an item |
+| `/board-accept <id>` | Accept a proposed or rejected item |
 | `/board-supersede <id> <new text>` | Supersede an item and create a replacement |
 | `/board-clear` | Clear the board after confirmation |
 

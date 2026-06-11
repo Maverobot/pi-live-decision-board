@@ -6,12 +6,7 @@ import { fileURLToPath } from "node:url";
 const require = createRequire(import.meta.url);
 
 function loadJiti() {
-	const npmRoot = process.env.NPM_CONFIG_PREFIX
-		? join(process.env.NPM_CONFIG_PREFIX, "lib", "node_modules")
-		: require("node:child_process").execFileSync("npm", ["root", "-g"], { encoding: "utf8" }).trim();
-	return require(join(npmRoot, "@earendil-works/pi-coding-agent/node_modules/jiti")).createJiti(
-		fileURLToPath(import.meta.url),
-	);
+	return require("jiti").createJiti(fileURLToPath(import.meta.url));
 }
 
 const jiti = loadJiti();
@@ -61,6 +56,9 @@ assert.equal(unchangedByUndefined.version, withDecision.version, "undefined-only
 assert.equal(unchangedByUndefined.items[1].status, "accepted", "undefined patch fields are ignored");
 assert.equal(unchangedByUndefined.items[1].strength, "hard", "undefined strength is ignored");
 
+const unchangedBySameStrength = mod.updateBoardItem(withDecision, "D1", { strength: "hard" });
+assert.equal(unchangedBySameStrength.version, withDecision.version, "same-value patches are no-ops");
+
 const superseded = mod.supersedeBoardItem(withDecision, "D1", "Build extension MVP first");
 assert.equal(superseded.items.find((item) => item.id === "D1").status, "superseded");
 assert.equal(superseded.items.at(-1).supersedes, "D1");
@@ -91,7 +89,12 @@ assert.equal(parsed.items.find((item) => item.id === "A1").version, parsed.versi
 assert.equal(mod.isMutatingToolCall("write", { path: "x" }), true);
 assert.equal(mod.isMutatingToolCall("edit", { path: "x" }), true);
 assert.equal(mod.isMutatingToolCall("bash", { command: "git diff --stat" }), false);
+assert.equal(mod.isMutatingToolCall("bash", { command: "git branch --show-current" }), false);
 assert.equal(mod.isMutatingToolCall("bash", { command: "echo hi > file.txt" }), true);
 assert.equal(mod.isMutatingToolCall("bash", { command: "sed -i s/a/b/g file.txt" }), true);
+assert.equal(mod.isMutatingToolCall("bash", { command: "find . -delete" }), true);
+assert.equal(mod.isMutatingToolCall("bash", { command: "find . -exec rm {} +" }), true);
+assert.equal(mod.isMutatingToolCall("bash", { command: "git branch -D stale" }), true);
+assert.equal(mod.isMutatingToolCall("bash", { command: "git diff --output=patch.diff" }), true);
 
 console.log("live decision board state tests passed");

@@ -109,16 +109,24 @@ export function updateBoardItem(board: BoardState, id: string, patch: BoardPatch
 	) as BoardPatch;
 	if (Object.keys(cleanPatch).length === 0) return board;
 
+	const text = cleanPatch.text?.trim() ?? existing.text;
+	if (!text) throw new Error("Board item text is required");
+	const effective: BoardItem = { ...existing, ...cleanPatch, text };
+	const changed =
+		existing.text !== effective.text ||
+		existing.status !== effective.status ||
+		existing.strength !== effective.strength ||
+		existing.source !== effective.source ||
+		existing.supersedes !== effective.supersedes;
+	if (!changed) return board;
+
 	const nextVersion = board.version + 1;
 	return {
 		...board,
 		version: nextVersion,
-		items: board.items.map((item) => {
-			if (item.id !== normalizedId) return item;
-			const text = cleanPatch.text?.trim() ?? item.text;
-			if (!text) throw new Error("Board item text is required");
-			return { ...item, ...cleanPatch, text, version: nextVersion, updatedAt: now() };
-		}),
+		items: board.items.map((item) =>
+			item.id === normalizedId ? { ...effective, version: nextVersion, updatedAt: now() } : item,
+		),
 	};
 }
 
@@ -331,7 +339,43 @@ export function isReadOnlyBashCommand(command: string): boolean {
 	const trimmed = command.trim();
 	if (!trimmed) return true;
 	if (/[;&|`$()<>]/.test(trimmed)) return false;
-	return /^(pwd|ls(\s|$)|cat\s|head\s|tail\s|grep\s|rg\s|find\s|git\s+(status|diff|log|show|branch)(\s|$)|npm\s+(list|outdated)(\s|$)|pnpm\s+(list|outdated)(\s|$)|yarn\s+(list|info|outdated)(\s|$))/.test(trimmed);
+
+	const [program, ...args] = trimmed.split(/\s+/);
+	if (!program) return true;
+
+	switch (program) {
+		case "pwd":
+			return args.length === 0;
+		case "ls":
+		case "cat":
+		case "head":
+		case "tail":
+		case "grep":
+		case "rg":
+			return true;
+		case "find":
+			return !args.some((arg) => ["-delete", "-exec", "-execdir", "-ok", "-okdir", "-fprint", "-fprint0"].includes(arg));
+		case "git":
+			return isReadOnlyGitCommand(args);
+		case "npm":
+		case "pnpm":
+			return ["list", "outdated"].includes(args[0] ?? "");
+		case "yarn":
+			return ["list", "info", "outdated"].includes(args[0] ?? "");
+		default:
+			return false;
+	}
+}
+
+function isReadOnlyGitCommand(args: string[]): boolean {
+	const subcommand = args[0] ?? "";
+	const rest = args.slice(1);
+	if (["status", "log", "show"].includes(subcommand)) return true;
+	if (subcommand === "diff") return !rest.some((arg) => arg === "--output" || arg.startsWith("--output="));
+	if (subcommand === "branch") {
+		return rest.length === 0 || rest.every((arg) => ["--show-current", "--contains", "--merged", "--no-merged", "-a", "--all", "-r", "-v", "-vv"].includes(arg));
+	}
+	return false;
 }
 
 export function isMutatingToolCall(toolName: string, input: Record<string, unknown>): boolean {
@@ -372,6 +416,10 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 	}
 
 	function applyBoard(next: BoardState, ctx: ExtensionContext, reason: string, source: BoardSource = "user"): void {
+		if (next === board) {
+			ctx.ui.notify(`${reason}: no change`, "info");
+			return;
+		}
 		const previousVersion = board.version;
 		board = next;
 		persist();
@@ -424,11 +472,13 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 
 	pi.on("session_start", async (_event, ctx) => {
 		board = restoreBoardFromEntries(ctx.sessionManager.getBranch() as SessionEntryLike[]);
+		lastInjectedBoardVersion = 0;
 		updateUi(ctx);
 	});
 
 	pi.on("session_tree", async (_event, ctx) => {
 		board = restoreBoardFromEntries(ctx.sessionManager.getBranch() as SessionEntryLike[]);
+		lastInjectedBoardVersion = 0;
 		updateUi(ctx);
 	});
 
@@ -473,6 +523,13 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 		description: "Reject a board item: /board-reject A1",
 		handler: async (args, ctx) => {
 			safeApplyBoard(ctx, "Rejected item", () => updateBoardItem(board, args.trim(), { status: "rejected" }));
+		},
+	});
+
+	pi.registerCommand("board-accept", {
+		description: "Accept a proposed or rejected board item: /board-accept A1",
+		handler: async (args, ctx) => {
+			safeApplyBoard(ctx, "Accepted item", () => updateBoardItem(board, args.trim(), { status: "accepted" }));
 		},
 	});
 
@@ -568,14 +625,15 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 		},
 	});
 
-	pi.on("context", async (event) => {
-		const filtered = (event.messages as MessageLike[]).filter(
-			(message) => !BOARD_CONTEXT_TYPES.has(message.customType ?? ""),
-		);
-		if (board.items.length === 0) return { messages: filtered };
-		lastInjectedBoardVersion = board.version;
-		return { messages: [boardContextForProvider(), ...filtered] };
-	});
+	pi.on(
+		"context",
+		(async (event: { messages: MessageLike[] }) => {
+			const filtered = event.messages.filter((message) => !BOARD_CONTEXT_TYPES.has(message.customType ?? ""));
+			if (board.items.length === 0) return { messages: filtered };
+			lastInjectedBoardVersion = board.version;
+			return { messages: [boardContextForProvider(), ...filtered] };
+		}) as any,
+	);
 
 	pi.on("before_agent_start", async () => {
 		if (board.items.length === 0) return;

@@ -6,12 +6,7 @@ import { fileURLToPath } from "node:url";
 const require = createRequire(import.meta.url);
 
 function loadJiti() {
-	const npmRoot = process.env.NPM_CONFIG_PREFIX
-		? join(process.env.NPM_CONFIG_PREFIX, "lib", "node_modules")
-		: require("node:child_process").execFileSync("npm", ["root", "-g"], { encoding: "utf8" }).trim();
-	return require(join(npmRoot, "@earendil-works/pi-coding-agent/node_modules/jiti")).createJiti(
-		fileURLToPath(import.meta.url),
-	);
+	return require("jiti").createJiti(fileURLToPath(import.meta.url));
 }
 
 const jiti = loadJiti();
@@ -26,6 +21,7 @@ let latestWidget;
 let latestStatus;
 let latestMessage;
 let latestSendOptions;
+let branchEntries = [];
 
 extension({
 	on(eventName, callback) {
@@ -54,6 +50,7 @@ for (const name of [
 	"board-hard",
 	"board-soft",
 	"board-reject",
+	"board-accept",
 	"board-supersede",
 	"board-clear",
 ]) {
@@ -64,7 +61,7 @@ assert.equal(registeredTool.name, "decision_board", "decision_board tool should 
 const ctx = {
 	hasUI: true,
 	isIdle: () => true,
-	sessionManager: { getBranch: () => [] },
+	sessionManager: { getBranch: () => branchEntries },
 	ui: {
 		theme: {
 			fg: (_color, text) => text,
@@ -91,6 +88,17 @@ assert(latestWidget.some((line) => line.includes("A1")), "assume command updates
 assert(latestWidget.some((line) => line.includes("D1")), "decide command updates widget");
 assert.match(latestStatus, /Board v2/);
 assert.match(latestMessage.content, /Build as a Pi extension first/);
+const initialBoard = entries.at(-1).data;
+
+await commands.get("board-reject").handler("A1", ctx);
+assert.equal(entries.at(-1).data.items.find((item) => item.id === "A1").status, "rejected");
+await commands.get("board-accept").handler("A1", ctx);
+assert.equal(entries.at(-1).data.items.find((item) => item.id === "A1").status, "accepted");
+await commands.get("board-hard").handler("D1", ctx);
+const lowHardBoard = entries.at(-1).data;
+const beforeNoOp = entries.length;
+await commands.get("board-hard").handler("D1", ctx);
+assert.equal(entries.length, beforeNoOp, "same-value hard command should not persist a no-op change");
 
 await commands.get("board-supersede").handler("D1 Build extension MVP first", ctx);
 assert.equal(entries.at(-1).data.items.find((item) => item.id === "D1").status, "superseded");
@@ -169,5 +177,10 @@ assert.equal(blockedRedirect.block, true, "stale hard changes block shell redire
 
 const allowed = await events.get("tool_call")({ toolName: "read", input: { path: "README.md" } }, ctx);
 assert.equal(allowed, undefined, "read-only tools are not blocked");
+
+branchEntries = [{ type: "custom", customType: "live-decision-board", data: lowHardBoard }];
+await events.get("session_tree")({}, ctx);
+const blockedAfterRestore = await events.get("tool_call")({ toolName: "write", input: { path: "x", content: "y" } }, ctx);
+assert.equal(blockedAfterRestore.block, true, "restoring a branch resets injected version before writes");
 
 console.log("live decision board extension tests passed");

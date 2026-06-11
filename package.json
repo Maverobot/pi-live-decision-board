@@ -20,21 +20,30 @@
   },
   "homepage": "https://github.com/Maverobot/pi-live-decision-board#readme",
   "scripts": {
-    "test": "node tests/live-decision-board-state.test.mjs && node tests/live-decision-board-extension.test.mjs"
+    "test": "npm run typecheck && node tests/live-decision-board-state.test.mjs && node tests/live-decision-board-extension.test.mjs",
+    "typecheck": "tsc --noEmit"
   },
   "peerDependencies": {
-    "@earendil-works/pi-ai": "*",
-    "@earendil-works/pi-coding-agent": "*",
-    "typebox": "*"
+    "@earendil-works/pi-ai": ">=0.79.0 <1",
+    "@earendil-works/pi-coding-agent": ">=0.79.0 <1",
+    "typebox": "^1.1.0"
   },
   "pi": {
     "extensions": [
-      "./extensions"
+      "./extensions/live-decision-board.ts"
     ]
   },
   "devDependencies": {
     "@earendil-works/pi-ai": "0.79.1",
     "@earendil-works/pi-coding-agent": "0.79.1",
-    "typebox": "1.1.38"
-  }
+    "@types/node": "^25.9.3",
+    "jiti": "^2.7.0",
+    "typebox": "1.1.38",
+    "typescript": "^6.0.3"
+  },
+  "files": [
+    "extensions",
+    "README.md",
+    "LICENSE"
+  ]
 }
