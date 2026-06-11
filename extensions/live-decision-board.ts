@@ -8,7 +8,7 @@
 
 import { StringEnum } from "@earendil-works/pi-ai";
 import type { ContextEvent, ExtensionAPI, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
-import { Text } from "@earendil-works/pi-tui";
+import { Key, matchesKey, Text, truncateToWidth } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 
 export type BoardKind = "assumption" | "decision";
@@ -682,6 +682,115 @@ function getCustomType(message: unknown): string {
 	return typeof customType === "string" ? customType : "";
 }
 
+type BoardManagerAction =
+	| { type: "close" }
+	| { type: "edit" | "accept" | "reject" | "harden" | "soften" | "supersede"; id: string };
+
+function compareManagerItems(a: BoardItem, b: BoardItem): number {
+	const activeRank = Number(isActiveItem(b)) - Number(isActiveItem(a));
+	if (activeRank !== 0) return activeRank;
+	const kindRank = Number(a.kind === "assumption") - Number(b.kind === "assumption");
+	if (kindRank !== 0) return kindRank;
+	return compareWidgetItems(a, b);
+}
+
+class BoardManagerComponent {
+	private readonly items: BoardItem[];
+	private selectedIndex = 0;
+	private cachedWidth?: number;
+	private cachedLines?: string[];
+
+	constructor(
+		private readonly board: BoardState,
+		private readonly theme: Theme,
+		private readonly done: (action: BoardManagerAction) => void,
+		private readonly requestRender: () => void,
+	) {
+		this.items = [...board.items].sort(compareManagerItems);
+	}
+
+	handleInput(data: string): void {
+		if (matchesKey(data, Key.escape) || matchesKey(data, Key.ctrl("c")) || data === "q") {
+			this.done({ type: "close" });
+			return;
+		}
+
+		if (matchesKey(data, Key.down) || data === "j") {
+			this.moveSelection(1);
+			return;
+		}
+		if (matchesKey(data, Key.up) || data === "k") {
+			this.moveSelection(-1);
+			return;
+		}
+
+		const selected = this.items[this.selectedIndex];
+		if (!selected) return;
+		if (matchesKey(data, Key.enter) || data === "e") this.done({ type: "edit", id: selected.id });
+		else if (data === "a") this.done({ type: "accept", id: selected.id });
+		else if (data === "r") this.done({ type: "reject", id: selected.id });
+		else if (data === "h") this.done({ type: "harden", id: selected.id });
+		else if (data === "s") this.done({ type: "soften", id: selected.id });
+		else if (data === "u") this.done({ type: "supersede", id: selected.id });
+	}
+
+	render(width: number): string[] {
+		if (this.cachedLines && this.cachedWidth === width) return this.cachedLines;
+		const activeCount = this.items.filter(isActiveItem).length;
+		const inactiveCount = this.items.length - activeCount;
+		const hardCount = this.items.filter((item) => isAcceptedHardItem(item)).length;
+		const lines = [
+			this.header(width),
+			truncateToWidth(
+				`Board v${this.board.version} • ${pluralize(activeCount, "active item")} • ${pluralize(inactiveCount, "inactive item")} • ${pluralize(hardCount, "hard constraint")}`,
+				width,
+			),
+			"",
+		];
+
+		if (this.items.length === 0) {
+			lines.push(truncateToWidth(this.theme.fg("dim", "No board items yet. Use /assume or /decide to add one."), width));
+		} else {
+			for (const [index, item] of this.items.entries()) {
+				lines.push(this.renderItem(item, index, width));
+			}
+		}
+
+		lines.push("", truncateToWidth(this.theme.fg("dim", "↑↓/j/k select • enter/e edit • a accept • r reject/remove • h hard • s soft • u supersede • q/esc close"), width));
+		this.cachedWidth = width;
+		this.cachedLines = lines;
+		return lines;
+	}
+
+	invalidate(): void {
+		this.cachedWidth = undefined;
+		this.cachedLines = undefined;
+	}
+
+	private header(width: number): string {
+		const title = ` ${this.theme.fg("accent", "Live Decision Board Manager")} `;
+		return truncateToWidth(`${this.theme.fg("dim", "────")} ${title}${this.theme.fg("dim", "────")}`, width);
+	}
+
+	private renderItem(item: BoardItem, index: number, width: number): string {
+		const selected = index === this.selectedIndex;
+		const marker = selected ? this.theme.fg("accent", ">") : " ";
+		const id = this.theme.fg("accent", `[${item.id}]`);
+		const strength = item.strength === "hard" ? this.theme.fg("warning", item.strength) : this.theme.fg("dim", item.strength);
+		const statusColor = item.status === "accepted" ? "success" : item.status === "proposed" ? "warning" : "dim";
+		const status = this.theme.fg(statusColor, item.status);
+		const text = isActiveItem(item) ? this.theme.fg("muted", item.text) : this.theme.fg("dim", item.text);
+		return truncateToWidth(`${marker} ${id} ${status}/${strength} ${text}`, width);
+	}
+
+	private moveSelection(delta: number): void {
+		if (this.items.length === 0) return;
+		this.selectedIndex = Math.max(0, Math.min(this.items.length - 1, this.selectedIndex + delta));
+		this.invalidate();
+		this.requestRender();
+	}
+}
+
 export default function liveDecisionBoard(pi: ExtensionAPI): void {
 	let board = createEmptyBoard();
 	let lastInjectedBoardVersion = 0;
@@ -785,6 +894,76 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 		updateUi(ctx);
 	}
 
+	async function manageBoard(ctx: ExtensionContext): Promise<void> {
+		while (true) {
+			const baseEpoch = boardEpoch;
+			const action = await ctx.ui.custom<BoardManagerAction>(
+				(tui, theme, _keybindings, done) => new BoardManagerComponent(board, theme, done, () => tui.requestRender()),
+				{ overlay: true, overlayOptions: { width: "90%", minWidth: 60, maxHeight: "80%" } },
+			);
+			if (action.type === "close") return;
+			if (boardEpoch !== baseEpoch) {
+				ctx.ui.notify("Live Decision Board changed while manager was open; action skipped and manager refreshed.", "warning");
+				continue;
+			}
+			await applyBoardManagerAction(ctx, action);
+		}
+	}
+
+	async function applyBoardManagerAction(ctx: ExtensionContext, action: Exclude<BoardManagerAction, { type: "close" }>): Promise<void> {
+		const item = board.items.find((candidate) => candidate.id === action.id);
+		if (!item) {
+			ctx.ui.notify(`Board item not found: ${action.id}`, "error");
+			return;
+		}
+
+		if (action.type === "edit") {
+			await editBoardManagerItem(ctx, item);
+			return;
+		}
+		if (action.type === "supersede") {
+			await supersedeBoardManagerItem(ctx, item);
+			return;
+		}
+
+		switch (action.type) {
+			case "accept":
+				safeApplyBoard(ctx, "Accepted item", () => updateBoardItem(board, item.id, { status: "accepted" }));
+				return;
+			case "reject":
+				safeApplyBoard(ctx, "Rejected item", () => updateBoardItem(board, item.id, { status: "rejected" }));
+				return;
+			case "harden":
+				safeApplyBoard(ctx, "Marked hard", () => updateBoardItem(board, item.id, { strength: "hard" }));
+				return;
+			case "soften":
+				safeApplyBoard(ctx, "Marked soft", () => updateBoardItem(board, item.id, { strength: "soft" }));
+				return;
+		}
+	}
+
+	async function editBoardManagerItem(ctx: ExtensionContext, item: BoardItem): Promise<void> {
+		const baseEpoch = boardEpoch;
+		const edited = await ctx.ui.editor(`Edit ${item.id}`, item.text);
+		if (!edited || edited.trim() === item.text.trim()) return;
+		if (boardEpoch !== baseEpoch) {
+			ctx.ui.notify("Live Decision Board changed while item editor was open; reopen /board-manage and apply your edit to the latest board.", "warning");
+			return;
+		}
+		safeApplyBoard(ctx, "Edited item", () => updateBoardItem(board, item.id, { text: edited }));
+	}
+
+	async function supersedeBoardManagerItem(ctx: ExtensionContext, item: BoardItem): Promise<void> {
+		const baseEpoch = boardEpoch;
+		const replacementText = await ctx.ui.editor(`Supersede ${item.id}`, item.text);
+		if (!replacementText?.trim()) return;
+		if (boardEpoch !== baseEpoch) {
+			ctx.ui.notify("Live Decision Board changed while supersede editor was open; reopen /board-manage and apply your edit to the latest board.", "warning");
+			return;
+		}
+		safeApplyBoard(ctx, "Superseded item", () => supersedeBoardItem(board, item.id, replacementText, "user"));
+	}
+
 	pi.on("session_start", async (_event, ctx) => {
 		restoreBoard(ctx);
 	});
@@ -809,6 +988,14 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 					: "Live Decision Board widget hidden; board still updates, injects into context, and enforces hard decisions. Use /board-toggle to show it or /board-snapshot to inspect it.",
 				"info",
 			);
+		},
+	});
+
+	pi.registerCommand("board-manage", {
+		description: "Manage live board items with a keyboard UI",
+		handler: async (_args, ctx) => {
+			if (ctx.mode !== "tui") return ctx.ui.notify("/board-manage requires TUI mode", "error");
+			await manageBoard(ctx);
 		},
 	});
 

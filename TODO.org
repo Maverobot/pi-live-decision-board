@@ -12,3 +12,4 @@
 
 - [x] Add `/board-toggle` to hide/show the persistent widget without changing board state.
 - [x] Rename `/board-show` to `/board-snapshot` so message snapshots are explicit.
+- [x] Add `/board-manage` keyboard UI for selecting and updating board items.

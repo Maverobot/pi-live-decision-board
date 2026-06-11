@@ -46,6 +46,7 @@ for (const name of [
 	"board",
 	"board-snapshot",
 	"board-toggle",
+	"board-manage",
 	"assume",
 	"decide",
 	"board-hard",
@@ -241,6 +242,24 @@ assert.equal(
 );
 const allowedAfterClearInjection = await events.get("tool_call")({ toolName: "write", input: { path: "x", content: "y" } }, ctx);
 assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board releases the stale hard-decision guard");
+
+{
+	let nonTuiNotification = "";
+	await commands.get("board-manage").handler("", {
+		...ctx,
+		mode: "rpc",
+		ui: {
+			...ctx.ui,
+			notify: (message) => {
+				nonTuiNotification = message;
+			},
+			custom: async () => {
+				throw new Error("board-manage should not open a custom TUI outside TUI mode");
+			},
+		},
+	});
+	assert.match(nonTuiNotification, /requires TUI mode/, "board-manage should explain that it needs TUI mode");
+}
 
 {
 	const localCommands = new Map();
@@ -452,6 +471,168 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 	await clearPromise;
 	assert.equal(localEntries.length, entriesBeforeStaleClear, "same-version branch changes should make open board-clear confirmations stale");
 	assert.match(latestNotification, /changed while confirmation was open/, "stale board-clear confirmations should notify the user to retry");
+}
+
+{
+	const localCommands = new Map();
+	const localEvents = new Map();
+	const localEntries = [];
+	const rendered = [];
+	const testTheme = { fg: (_color, text) => text };
+	const localCtx = {
+		mode: "tui",
+		hasUI: true,
+		isIdle: () => true,
+		sessionManager: { getBranch: () => [] },
+		ui: {
+			theme: testTheme,
+			setStatus: () => {},
+			setWidget: () => {},
+			notify: () => {},
+			confirm: async () => true,
+			editor: async (_title, initial) => initial,
+			custom: async (factory) => {
+				let result;
+				const component = factory({ requestRender: () => {} }, testTheme, {}, (value) => {
+					result = value;
+				});
+				rendered.push(component.render(100).join("\n"));
+				component.handleInput("j");
+				rendered.push(component.render(100).join("\n"));
+				component.handleInput("q");
+				return result;
+			},
+		},
+	};
+
+	extension({
+		on(eventName, callback) {
+			localEvents.set(eventName, callback);
+		},
+		registerCommand(name, def) {
+			localCommands.set(name, def);
+		},
+		registerTool() {},
+		appendEntry(customType, data) {
+			localEntries.push({ type: "custom", customType, data });
+		},
+		sendMessage() {},
+	});
+
+	await localEvents.get("session_start")({}, localCtx);
+	await localCommands.get("assume").handler("Managed assumption", localCtx);
+	await localCommands.get("decide").handler("Managed decision", localCtx);
+	await localCommands.get("board-manage").handler("", localCtx);
+	assert.match(rendered[0], /Live Decision Board Manager/, "board-manage should render a titled keyboard UI");
+	assert.match(rendered[0], /> \[D1\]/, "manager initially selects the first sorted decision");
+	assert.match(rendered[0], /e edit/, "manager renders keyboard help");
+	assert.match(rendered[1], /> \[A1\]/, "j/down moves selection to the next item");
+}
+
+{
+	const localCommands = new Map();
+	const localEvents = new Map();
+	const localEntries = [];
+	const testTheme = { fg: (_color, text) => text };
+	const queuedKeys = ["s", "q"];
+	const localCtx = {
+		mode: "tui",
+		hasUI: true,
+		isIdle: () => true,
+		sessionManager: { getBranch: () => [] },
+		ui: {
+			theme: testTheme,
+			setStatus: () => {},
+			setWidget: () => {},
+			notify: () => {},
+			confirm: async () => true,
+			editor: async (_title, initial) => initial,
+			custom: async (factory) => {
+				let result;
+				const component = factory({ requestRender: () => {} }, testTheme, {}, (value) => {
+					result = value;
+				});
+				component.handleInput(queuedKeys.shift());
+				return result;
+			},
+		},
+	};
+
+	extension({
+		on(eventName, callback) {
+			localEvents.set(eventName, callback);
+		},
+		registerCommand(name, def) {
+			localCommands.set(name, def);
+		},
+		registerTool() {},
+		appendEntry(customType, data) {
+			localEntries.push({ type: "custom", customType, data });
+		},
+		sendMessage() {},
+	});
+
+	await localEvents.get("session_start")({}, localCtx);
+	await localCommands.get("decide").handler("Already soft decision", localCtx);
+	const entriesBeforeNoOpManager = localEntries.length;
+	await localCommands.get("board-manage").handler("", localCtx);
+	assert.equal(localEntries.length, entriesBeforeNoOpManager, "manager no-op actions should not persist duplicate board entries");
+}
+
+{
+	const localCommands = new Map();
+	const localEvents = new Map();
+	const localEntries = [];
+	const testTheme = { fg: (_color, text) => text };
+	const queuedKeys = ["h", "s", "r", "a", "e", "u", "q"];
+	const editorTexts = ["Managed decision edited", "Managed decision replacement"];
+	const localCtx = {
+		mode: "tui",
+		hasUI: true,
+		isIdle: () => true,
+		sessionManager: { getBranch: () => [] },
+		ui: {
+			theme: testTheme,
+			setStatus: () => {},
+			setWidget: () => {},
+			notify: () => {},
+			confirm: async () => true,
+			editor: async () => editorTexts.shift(),
+			custom: async (factory) => {
+				let result;
+				const component = factory({ requestRender: () => {} }, testTheme, {}, (value) => {
+					result = value;
+				});
+				component.handleInput(queuedKeys.shift());
+				return result;
+			},
+		},
+	};
+
+	extension({
+		on(eventName, callback) {
+			localEvents.set(eventName, callback);
+		},
+		registerCommand(name, def) {
+			localCommands.set(name, def);
+		},
+		registerTool() {},
+		appendEntry(customType, data) {
+			localEntries.push({ type: "custom", customType, data });
+		},
+		sendMessage() {},
+	});
+
+	await localEvents.get("session_start")({}, localCtx);
+	await localCommands.get("decide").handler("Managed decision", localCtx);
+	const entriesBeforeManagerActions = localEntries.length;
+	await localCommands.get("board-manage").handler("", localCtx);
+	const finalBoard = localEntries.at(-1).data;
+	assert.equal(localEntries.length, entriesBeforeManagerActions + 6, "manager persists each real item mutation exactly once");
+	assert.equal(finalBoard.items.find((item) => item.id === "D1").status, "superseded", "manager can supersede the selected item");
+	assert.equal(finalBoard.items.find((item) => item.id === "D1").text, "Managed decision edited", "manager can edit selected item text before superseding");
+	assert.equal(finalBoard.items.at(-1).id, "D2", "manager supersede creates the next board item id");
+	assert.equal(finalBoard.items.at(-1).text, "Managed decision replacement", "manager supersede uses the entered replacement text");
 }
 
 console.log("live decision board extension tests passed");
