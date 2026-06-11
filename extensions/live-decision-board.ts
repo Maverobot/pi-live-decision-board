@@ -183,8 +183,16 @@ export function supersedeBoardItem(
 	});
 }
 
+function isActiveItem(item: Pick<BoardItem, "status">): boolean {
+	return item.status === "accepted" || item.status === "proposed";
+}
+
+function activeBoardItems(board: BoardState): BoardItem[] {
+	return board.items.filter(isActiveItem);
+}
+
 export function formatBoardForPrompt(board: BoardState): string {
-	const active = board.items.filter((item) => item.status === "accepted" || item.status === "proposed");
+	const active = activeBoardItems(board);
 	const assumptions = active.filter((item) => item.kind === "assumption");
 	const decisions = active.filter((item) => item.kind === "decision");
 	const lines = [`## Live Assumptions & Decisions — version ${board.version}`, ""];
@@ -204,9 +212,10 @@ function formatPromptItem(item: BoardItem): string {
 }
 
 export function formatBoardStatus(board: BoardState): string {
-	const assumptions = board.items.filter((item) => item.kind === "assumption").length;
-	const decisions = board.items.filter((item) => item.kind === "decision").length;
-	const hardCount = board.items.filter((item) => item.status === "accepted" && item.strength === "hard").length;
+	const active = activeBoardItems(board);
+	const assumptions = active.filter((item) => item.kind === "assumption").length;
+	const decisions = active.filter((item) => item.kind === "decision").length;
+	const hardCount = active.filter((item) => item.status === "accepted" && item.strength === "hard").length;
 	return `Board v${board.version} • ${pluralize(assumptions, "assumption")} • ${pluralize(decisions, "decision")} • ${pluralize(hardCount, "hard constraint")}`;
 }
 
@@ -215,9 +224,10 @@ function pluralize(count: number, label: string): string {
 }
 
 function formatBoardStatusForWidget(board: BoardState, theme: Theme): string {
-	const assumptions = board.items.filter((item) => item.kind === "assumption").length;
-	const decisions = board.items.filter((item) => item.kind === "decision").length;
-	const hardCount = board.items.filter((item) => item.status === "accepted" && item.strength === "hard").length;
+	const active = activeBoardItems(board);
+	const assumptions = active.filter((item) => item.kind === "assumption").length;
+	const decisions = active.filter((item) => item.kind === "decision").length;
+	const hardCount = active.filter((item) => item.status === "accepted" && item.strength === "hard").length;
 	return [
 		theme.fg("muted", "Board"),
 		theme.fg("accent", `v${board.version}`),
@@ -248,9 +258,7 @@ function colorizeWidgetLine(line: string, theme: Theme): string {
 
 export function formatBoardWidget(board: BoardState, options: { maxItems?: number } = {}): string[] {
 	const maxItems = options.maxItems ?? 8;
-	const active = board.items
-		.filter((item) => item.status === "accepted" || item.status === "proposed")
-		.sort(compareWidgetItems);
+	const active = activeBoardItems(board).sort(compareWidgetItems);
 	const decisions = active.filter((item) => item.kind === "decision");
 	const assumptions = active.filter((item) => item.kind === "assumption");
 
@@ -268,13 +276,20 @@ function compareWidgetItems(a: BoardItem, b: BoardItem): number {
 }
 
 function appendWidgetSection(lines: string[], label: string, items: BoardItem[], remainingItems: number): number {
-	if (items.length === 0 || remainingItems <= 0) return remainingItems;
-	const visibleItems = items.slice(0, remainingItems);
+	if (items.length === 0) return remainingItems;
+	const singularLabel = label.endsWith("s") ? label.slice(0, -1).toLowerCase() : label.toLowerCase();
 	lines.push(`${label} (${items.length})`);
+	if (remainingItems <= 0) {
+		lines.push(`… ${pluralize(items.length, singularLabel)} hidden`);
+		return 0;
+	}
+	const visibleItems = items.slice(0, remainingItems);
 	for (const item of visibleItems) {
 		const marker = item.strength === "hard" ? "!" : "•";
 		lines.push(`${marker} [${item.id}] ${item.text}`);
 	}
+	const hiddenItems = items.length - visibleItems.length;
+	if (hiddenItems > 0) lines.push(`… ${pluralize(hiddenItems, `more ${singularLabel}`)}`);
 	return remainingItems - visibleItems.length;
 }
 
@@ -283,8 +298,12 @@ export function hasUninjectedHardChanges(board: BoardState, injectedVersion: num
 }
 
 export function restoreBoardFromEntries(entries: SessionEntryLike[]): BoardState {
-	const latest = entries.filter((entry) => entry.type === "custom" && entry.customType === CUSTOM_TYPE).at(-1);
-	return normalizeBoardState(latest?.data) ?? createEmptyBoard();
+	const boardEntries = entries.filter((entry) => entry.type === "custom" && entry.customType === CUSTOM_TYPE);
+	for (let index = boardEntries.length - 1; index >= 0; index -= 1) {
+		const restored = normalizeBoardState(boardEntries[index]?.data);
+		if (restored) return restored;
+	}
+	return createEmptyBoard();
 }
 
 function normalizeBoardState(value: unknown): BoardState | undefined {
@@ -302,17 +321,27 @@ function normalizeBoardState(value: unknown): BoardState | undefined {
 	if (!candidate.items.every(isBoardItem)) return undefined;
 
 	const version = candidate.version;
-	const nextAssumptionId = candidate.nextAssumptionId;
-	const nextDecisionId = candidate.nextDecisionId;
 	const items = candidate.items.map((item) => ({ ...item, text: normalizeBoardText(item.text) }));
 	if (items.some((item) => item.version > version)) return undefined;
+
+	const seenIds = new Set<string>();
+	let maxAssumptionId = 0;
+	let maxDecisionId = 0;
+	for (const item of items) {
+		if (seenIds.has(item.id)) return undefined;
+		seenIds.add(item.id);
+		const numericId = Number.parseInt(item.id.slice(1), 10);
+		if (item.kind === "assumption") maxAssumptionId = Math.max(maxAssumptionId, numericId);
+		else maxDecisionId = Math.max(maxDecisionId, numericId);
+	}
+
 	const requiredBarrier = maxAcceptedHardItemVersion(items);
 	const restoredBarrier = candidate.hardDecisionBarrierVersion ?? requiredBarrier;
 	return {
 		version,
 		hardDecisionBarrierVersion: Math.min(version, Math.max(restoredBarrier, requiredBarrier)),
-		nextAssumptionId,
-		nextDecisionId,
+		nextAssumptionId: Math.max(candidate.nextAssumptionId, maxAssumptionId + 1),
+		nextDecisionId: Math.max(candidate.nextDecisionId, maxDecisionId + 1),
 		items,
 	};
 }
@@ -684,17 +713,24 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 		);
 	}
 
-	function applyBoard(next: BoardState, ctx: ExtensionContext, reason: string, source: BoardSource = "user"): void {
-		if (next === board) {
-			ctx.ui.notify(`${reason}: no change`, "info");
-			return;
-		}
+	function commitBoard(next: BoardState, ctx: ExtensionContext, source: BoardSource): { changed: boolean; previousVersion: number } {
+		if (next === board) return { changed: false, previousVersion: board.version };
 		const previousVersion = board.version;
 		board = next;
 		persist();
 		updateUi(ctx);
-		ctx.ui.notify(`${reason} (Board v${previousVersion} → v${board.version})`, "info");
 		notifyBoardChanged(previousVersion, ctx, source);
+		return { changed: true, previousVersion };
+	}
+
+	function applyBoard(next: BoardState, ctx: ExtensionContext, reason: string, source: BoardSource = "user"): boolean {
+		const result = commitBoard(next, ctx, source);
+		if (!result.changed) {
+			ctx.ui.notify(`${reason}: no change`, "info");
+			return false;
+		}
+		ctx.ui.notify(`${reason} (Board v${result.previousVersion} → v${board.version})`, "info");
+		return true;
 	}
 
 	function safeApplyBoard(
@@ -702,11 +738,12 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 		reason: string,
 		mutate: () => BoardState,
 		source: BoardSource = "user",
-	): void {
+	): boolean {
 		try {
-			applyBoard(mutate(), ctx, reason, source);
+			return applyBoard(mutate(), ctx, reason, source);
 		} catch (error) {
 			ctx.ui.notify(error instanceof Error ? error.message : String(error), "error");
+			return false;
 		}
 	}
 
@@ -752,7 +789,7 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 	});
 
 	pi.registerCommand("board-snapshot", {
-		description: "Show the current live assumptions/decisions board as a visible message snapshot",
+		description: "Show the active context snapshot of the live assumptions/decisions board as a visible message",
 		handler: async (_args, _ctx) => showBoard(),
 	});
 
@@ -761,7 +798,12 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 		handler: async (_args, ctx) => {
 			widgetVisible = !widgetVisible;
 			updateUi(ctx);
-			ctx.ui.notify(widgetVisible ? "Live Decision Board widget shown" : "Live Decision Board widget hidden", "info");
+			ctx.ui.notify(
+				widgetVisible
+					? "Live Decision Board widget shown"
+					: "Live Decision Board widget hidden; board still updates, injects into context, and enforces hard decisions. Use /board-toggle to show it or /board-snapshot to inspect it.",
+				"info",
+			);
 		},
 	});
 
@@ -839,10 +881,16 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 		description: "Edit the live assumptions/decisions board as markdown",
 		handler: async (_args, ctx) => {
 			if (!ctx.hasUI) return ctx.ui.notify("/board requires UI mode", "error");
-			const initial = serializeBoardMarkdown(board);
+			const baseBoard = board;
+			const baseVersion = baseBoard.version;
+			const initial = serializeBoardMarkdown(baseBoard);
 			const edited = await ctx.ui.editor("Edit Live Decision Board", initial);
 			if (!edited || edited.trim() === initial.trim()) return;
-			safeApplyBoard(ctx, "Edited board", () => parseBoardMarkdown(edited, board));
+			if (board.version !== baseVersion) {
+				ctx.ui.notify("Live Decision Board changed while editor was open; reopen /board and apply your edit to the latest board.", "warning");
+				return;
+			}
+			safeApplyBoard(ctx, "Edited board", () => parseBoardMarkdown(edited, baseBoard));
 		},
 	});
 
@@ -871,36 +919,38 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 
 			if (params.action === "add") {
 				if (!params.kind || !params.text?.trim()) throw new Error("decision_board add requires kind and text");
-				board = addBoardItem(board, {
+				const nextBoard = addBoardItem(board, {
 					kind: params.kind,
 					text: params.text,
 					status: params.status ?? "proposed",
 					strength: params.strength ?? "soft",
 					source: "agent",
 				});
-				persist();
-				updateUi(ctx);
-				const item = board.items.at(-1)!;
+				const item = nextBoard.items.at(-1)!;
+				commitBoard(nextBoard, ctx, "agent");
 				return { content: [{ type: "text", text: `Added ${item.id}: ${item.text}` }], details: { board, item } };
 			}
 
 			if (!params.id) throw new Error(`decision_board ${params.action} requires id`);
+			let nextBoard: BoardState;
 			if (params.action === "supersede") {
 				if (!params.text?.trim()) throw new Error("decision_board supersede requires replacement text");
-				board = supersedeBoardItem(board, params.id, params.text, "agent");
+				nextBoard = supersedeBoardItem(board, params.id, params.text, "agent");
 			} else if (params.action === "update") {
 				if (!params.text?.trim()) throw new Error("decision_board update requires non-empty text");
-				board = updateBoardItem(board, params.id, { text: params.text });
+				nextBoard = updateBoardItem(board, params.id, { text: params.text });
 			} else if (params.action === "set_status") {
 				if (!params.status) throw new Error("decision_board set_status requires status");
-				board = updateBoardItem(board, params.id, { status: params.status });
+				nextBoard = updateBoardItem(board, params.id, { status: params.status });
 			} else {
 				if (!params.strength) throw new Error("decision_board set_strength requires strength");
-				board = updateBoardItem(board, params.id, { strength: params.strength });
+				nextBoard = updateBoardItem(board, params.id, { strength: params.strength });
 			}
-			persist();
-			updateUi(ctx);
-			return { content: [{ type: "text", text: `Updated ${params.id}` }], details: { board } };
+			const result = commitBoard(nextBoard, ctx, "agent");
+			return {
+				content: [{ type: "text", text: result.changed ? `Updated ${params.id}` : `No change for ${params.id}` }],
+				details: { board },
+			};
 		},
 	});
 

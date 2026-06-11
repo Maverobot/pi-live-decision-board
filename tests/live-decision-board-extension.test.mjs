@@ -58,6 +58,7 @@ for (const name of [
 	assert(commands.has(name), `${name} command should be registered`);
 }
 assert.equal(commands.has("board-show"), false, "board-show should be renamed to board-snapshot");
+assert.match(commands.get("board-snapshot").description, /active context snapshot/, "board-snapshot should describe the active context view it records");
 assert.equal(registeredTool.name, "decision_board", "decision_board tool should be registered");
 assert.equal(registeredTool.executionMode, "sequential", "decision_board runs sequentially before later tool preflights");
 
@@ -139,6 +140,16 @@ const addResult = await registeredTool.execute(
 );
 assert.match(addResult.content[0].text, /D3/);
 assert.equal(entries.at(-1).data.items.at(-1).strength, "hard");
+const beforeToolNoOp = entries.length;
+const noOpToolResult = await registeredTool.execute(
+	"tool-noop",
+	{ action: "set_strength", id: "D3", strength: "hard" },
+	undefined,
+	undefined,
+	ctx,
+);
+assert.equal(entries.length, beforeToolNoOp, "same-value decision_board tool updates should not append duplicate board entries");
+assert.match(noOpToolResult.content[0].text, /No change/, "same-value decision_board tool updates should report no change");
 
 await assert.rejects(
 	() => registeredTool.execute("tool-2", { action: "set_status", id: "D3" }, undefined, undefined, ctx),
@@ -204,10 +215,17 @@ assert.equal(blockedRedirect.block, true, "stale hard changes block shell redire
 const allowed = await events.get("tool_call")({ toolName: "read", input: { path: "README.md" } }, ctx);
 assert.equal(allowed, undefined, "read-only tools are not blocked");
 
-branchEntries = [{ type: "custom", customType: "live-decision-board", data: lowHardBoard }];
+branchEntries = [
+	{ type: "custom", customType: "live-decision-board", data: lowHardBoard },
+	{
+		type: "custom",
+		customType: "live-decision-board",
+		data: { version: lowHardBoard.version + 1, nextAssumptionId: 2, nextDecisionId: 3, items: [null] },
+	},
+];
 await events.get("session_tree")({}, ctx);
 const blockedAfterRestore = await events.get("tool_call")({ toolName: "write", input: { path: "x", content: "y" } }, ctx);
-assert.equal(blockedAfterRestore.block, true, "restoring a branch resets injected version before writes");
+assert.equal(blockedAfterRestore.block, true, "restoring falls back past malformed latest entries and resets injected version before writes");
 
 await events.get("context")({ messages: [{ role: "user", content: "Sync restored board", timestamp: 5 }] }, ctx);
 await commands.get("board-clear").handler("", ctx);
@@ -223,5 +241,69 @@ assert.equal(
 );
 const allowedAfterClearInjection = await events.get("tool_call")({ toolName: "write", input: { path: "x", content: "y" } }, ctx);
 assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board releases the stale hard-decision guard");
+
+{
+	const localCommands = new Map();
+	const localEvents = new Map();
+	const localEntries = [];
+	let localTool;
+	let latestNotification = "";
+	let resolveEditor;
+	let editorInitial = "";
+	const editorResult = new Promise((resolve) => {
+		resolveEditor = resolve;
+	});
+	const localCtx = {
+		hasUI: true,
+		isIdle: () => true,
+		sessionManager: { getBranch: () => [] },
+		ui: {
+			theme: { fg: (_color, text) => text },
+			setStatus: () => {},
+			setWidget: () => {},
+			notify: (message) => {
+				latestNotification = message;
+			},
+			confirm: async () => true,
+			editor: async (_title, initial) => {
+				editorInitial = initial;
+				return editorResult;
+			},
+		},
+	};
+
+	extension({
+		on(eventName, callback) {
+			localEvents.set(eventName, callback);
+		},
+		registerCommand(name, def) {
+			localCommands.set(name, def);
+		},
+		registerTool(tool) {
+			localTool = tool;
+		},
+		appendEntry(customType, data) {
+			localEntries.push({ type: "custom", customType, data });
+		},
+		sendMessage() {},
+	});
+
+	await localEvents.get("session_start")({}, localCtx);
+	await localCommands.get("assume").handler("Initial assumption", localCtx);
+	const editPromise = localCommands.get("board").handler("", localCtx);
+	await localTool.execute(
+		"local-tool-1",
+		{ action: "add", kind: "decision", text: "Concurrent hard decision", status: "accepted", strength: "hard" },
+		undefined,
+		undefined,
+		localCtx,
+	);
+	const entriesBeforeStaleEditorSave = localEntries.length;
+	resolveEditor(editorInitial.replace("Initial assumption", "Stale editor rewrite"));
+	await editPromise;
+	assert.equal(localEntries.length, entriesBeforeStaleEditorSave, "stale /board editor saves should not append board entries");
+	assert(localEntries.at(-1).data.items.some((item) => item.text === "Concurrent hard decision"), "stale /board editor saves must not drop concurrent board updates");
+	assert.match(latestNotification, /changed while editor was open/, "stale /board editor saves should notify the user to reopen");
+}
 
 console.log("live decision board extension tests passed");

@@ -77,6 +77,28 @@ assert.deepEqual(
 	],
 	"widget groups sections, sorts ids ascending, and renders ids as bracketed keys",
 );
+const inactiveDecisionBoard = mod.updateBoardItem(widgetBoard, "D1", { status: "superseded" });
+assert.deepEqual(
+	mod.formatBoardWidget(inactiveDecisionBoard, { maxItems: 5 }),
+	[
+		"Board v5 • 2 assumptions • 1 decision • 0 hard constraints",
+		"Decisions (1)",
+		"• [D2] Second decision",
+		"Assumptions (2)",
+		"• [A1] Backend uses Node 22",
+		"• [A2] Second assumption",
+	],
+	"widget summary counts only active records shown in the widget body",
+);
+let overflowBoard = mod.createEmptyBoard();
+for (let index = 1; index <= 9; index += 1) {
+	overflowBoard = mod.addBoardItem(overflowBoard, { kind: "decision", text: `Decision ${index}` });
+}
+overflowBoard = mod.addBoardItem(overflowBoard, { kind: "assumption", text: "Assumption visible in counts" });
+const overflowWidget = mod.formatBoardWidget(overflowBoard, { maxItems: 8 });
+assert(overflowWidget.includes("… 1 more decision"), "widget shows an overflow cue for truncated decisions");
+assert(overflowWidget.includes("Assumptions (1)"), "widget still renders a non-empty section heading when item slots are exhausted");
+assert(overflowWidget.includes("… 1 assumption hidden"), "widget shows when a whole non-empty section is hidden by the item budget");
 
 const rejected = mod.updateBoardItem(withDecision, "A1", { status: "rejected" });
 assert.equal(rejected.version, 3, "updating item increments version");
@@ -124,6 +146,34 @@ const invalidRestored = mod.restoreBoardFromEntries([
 	},
 ]);
 assert.deepEqual(invalidRestored, mod.createEmptyBoard(), "malformed persisted board state is ignored");
+const fallbackRestored = mod.restoreBoardFromEntries([
+	{ type: "custom", customType: "live-decision-board", data: withDecision },
+	{
+		type: "custom",
+		customType: "live-decision-board",
+		data: { version: 3, nextAssumptionId: 2, nextDecisionId: 2, items: [null] },
+	},
+]);
+assert.deepEqual(fallbackRestored, withDecision, "restore falls back to the newest valid board when a later board entry is malformed");
+const duplicateIdRestored = mod.restoreBoardFromEntries([
+	{
+		type: "custom",
+		customType: "live-decision-board",
+		data: { ...withAssumption, items: [withAssumption.items[0], withAssumption.items[0]] },
+	},
+]);
+assert.deepEqual(duplicateIdRestored, mod.createEmptyBoard(), "restored board state rejects duplicate item ids");
+const staleCounterRestored = mod.restoreBoardFromEntries([
+	{
+		type: "custom",
+		customType: "live-decision-board",
+		data: { ...withDecision, nextAssumptionId: 1, nextDecisionId: 1 },
+	},
+]);
+assert.equal(staleCounterRestored.nextAssumptionId, 2, "restored assumption counter is clamped past existing ids");
+assert.equal(staleCounterRestored.nextDecisionId, 2, "restored decision counter is clamped past existing ids");
+assert.equal(mod.addBoardItem(staleCounterRestored, { kind: "assumption", text: "No duplicate A1" }).items.at(-1).id, "A2");
+assert.equal(mod.addBoardItem(staleCounterRestored, { kind: "decision", text: "No duplicate D1" }).items.at(-1).id, "D2");
 const restoredLowBarrier = mod.restoreBoardFromEntries([
 	{
 		type: "custom",
