@@ -43,9 +43,17 @@ assert.match(prompt, /D1: Build as a Pi extension first/);
 assert.match(prompt, /hard/);
 
 const widget = mod.formatBoardWidget(withDecision, { maxItems: 5 });
-assert(widget.some((line) => line.includes("Board v2")), "widget includes board version");
-assert(widget.some((line) => line.includes("A1")), "widget includes assumption id");
-assert(widget.some((line) => line.includes("D1")), "widget includes decision id");
+assert.deepEqual(
+	widget,
+	[
+		"Board v2 • 1 assumption • 1 decision • 1 hard constraint",
+		"Decisions (1)",
+		"! D1 Build as a Pi extension first",
+		"Assumptions (1)",
+		"• A1 Backend uses Node 22",
+	],
+	"widget groups decisions and assumptions under explicit section headings",
+);
 
 const rejected = mod.updateBoardItem(withDecision, "A1", { status: "rejected" });
 assert.equal(rejected.version, 3, "updating item increments version");

@@ -217,15 +217,30 @@ export function formatBoardWidget(board: BoardState, options: { maxItems?: numbe
 	const maxItems = options.maxItems ?? 8;
 	const active = board.items
 		.filter((item) => item.status === "accepted" || item.status === "proposed")
-		.sort((a, b) => (a.strength === b.strength ? b.version - a.version : a.strength === "hard" ? -1 : 1))
-		.slice(0, maxItems);
+		.sort(compareWidgetItems);
+	const decisions = active.filter((item) => item.kind === "decision");
+	const assumptions = active.filter((item) => item.kind === "assumption");
 
 	const lines = [formatBoardStatus(board)];
-	for (const item of active) {
+	let remainingItems = maxItems;
+	remainingItems = appendWidgetSection(lines, "Decisions", decisions, remainingItems);
+	appendWidgetSection(lines, "Assumptions", assumptions, remainingItems);
+	return lines;
+}
+
+function compareWidgetItems(a: BoardItem, b: BoardItem): number {
+	return a.strength === b.strength ? b.version - a.version : a.strength === "hard" ? -1 : 1;
+}
+
+function appendWidgetSection(lines: string[], label: string, items: BoardItem[], remainingItems: number): number {
+	if (items.length === 0 || remainingItems <= 0) return remainingItems;
+	const visibleItems = items.slice(0, remainingItems);
+	lines.push(`${label} (${items.length})`);
+	for (const item of visibleItems) {
 		const marker = item.strength === "hard" ? "!" : "•";
 		lines.push(`${marker} ${item.id} ${item.text}`);
 	}
-	return lines;
+	return remainingItems - visibleItems.length;
 }
 
 export function hasUninjectedHardChanges(board: BoardState, injectedVersion: number): boolean {
