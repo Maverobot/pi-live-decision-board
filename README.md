@@ -21,7 +21,8 @@ pi -e .
 | Command | Purpose |
 | --- | --- |
 | `/board` | Edit the board as markdown in Pi's multi-line editor |
-| `/board-show` | Show the current board as a visible message |
+| `/board-snapshot` | Show the current board as a visible message snapshot |
+| `/board-toggle` | Hide or show the persistent board widget |
 | `/assume <text>` | Add an accepted soft assumption |
 | `/decide <text>` | Add an accepted soft decision |
 | `/board-hard <id>` | Mark an item as hard |

@@ -656,6 +656,7 @@ function getCustomType(message: unknown): string {
 export default function liveDecisionBoard(pi: ExtensionAPI): void {
 	let board = createEmptyBoard();
 	let lastInjectedBoardVersion = 0;
+	let widgetVisible = true;
 
 	function persist(): void {
 		pi.appendEntry(CUSTOM_TYPE, board);
@@ -663,7 +664,7 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 
 	function updateUi(ctx: ExtensionContext): void {
 		ctx.ui.setStatus("decision-board", undefined);
-		if (board.items.length === 0) {
+		if (board.items.length === 0 || !widgetVisible) {
 			ctx.ui.setWidget("decision-board", undefined);
 			return;
 		}
@@ -750,9 +751,18 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 		updateUi(ctx);
 	});
 
-	pi.registerCommand("board-show", {
-		description: "Show the current live assumptions/decisions board",
+	pi.registerCommand("board-snapshot", {
+		description: "Show the current live assumptions/decisions board as a visible message snapshot",
 		handler: async (_args, _ctx) => showBoard(),
+	});
+
+	pi.registerCommand("board-toggle", {
+		description: "Hide or show the persistent live assumptions/decisions board widget",
+		handler: async (_args, ctx) => {
+			widgetVisible = !widgetVisible;
+			updateUi(ctx);
+			ctx.ui.notify(widgetVisible ? "Live Decision Board widget shown" : "Live Decision Board widget hidden", "info");
+		},
 	});
 
 	pi.registerCommand("assume", {

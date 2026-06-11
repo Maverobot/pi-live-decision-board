@@ -44,7 +44,8 @@ extension({
 
 for (const name of [
 	"board",
-	"board-show",
+	"board-snapshot",
+	"board-toggle",
 	"assume",
 	"decide",
 	"board-hard",
@@ -56,6 +57,7 @@ for (const name of [
 ]) {
 	assert(commands.has(name), `${name} command should be registered`);
 }
+assert.equal(commands.has("board-show"), false, "board-show should be renamed to board-snapshot");
 assert.equal(registeredTool.name, "decision_board", "decision_board tool should be registered");
 assert.equal(registeredTool.executionMode, "sequential", "decision_board runs sequentially before later tool preflights");
 
@@ -94,7 +96,7 @@ const ctx = {
 await events.get("session_start")({}, ctx);
 await commands.get("assume").handler("Backend uses Node 22", ctx);
 await commands.get("decide").handler("Build as a Pi extension first", ctx);
-await commands.get("board-show").handler("", ctx);
+await commands.get("board-snapshot").handler("", ctx);
 
 assert.equal(entries.at(-1).data.version, 2, "commands persist board changes");
 const widgetText = renderLatestWidgetText();
@@ -105,6 +107,13 @@ assert.match(widgetText, /\[A1\]/, "assume command updates widget with a bracket
 assert.match(widgetText, /\[D1\]/, "decide command updates widget with a bracketed key");
 assert.equal(latestStatus, undefined, "board summary should not be duplicated in the footer status");
 assert.match(latestMessage.content, /Build as a Pi extension first/);
+const entriesBeforeToggle = entries.length;
+await commands.get("board-toggle").handler("", ctx);
+assert.equal(latestWidget, undefined, "board-toggle hides the persistent widget");
+assert.equal(entries.length, entriesBeforeToggle, "board-toggle does not persist board state changes");
+await commands.get("board-toggle").handler("", ctx);
+assert.match(renderLatestWidgetText(), /Live Decision Board/, "board-toggle shows the persistent widget again");
+assert.equal(entries.length, entriesBeforeToggle, "showing the widget also does not persist board state changes");
 const initialBoard = entries.at(-1).data;
 
 await commands.get("board-reject").handler("A1", ctx);

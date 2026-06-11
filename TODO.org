@@ -9,3 +9,6 @@
    ↑3.5M ↓132k R48M CH99.7% $45.400 (sub) 71.6%/272k (auto)                                                                                                                             (openai-codex) gpt-5.5 • xhigh
    Board v6 • 2 assumptions • 4 decisions • 0 hard constraints
  #+end_src
+
+- [x] Add `/board-toggle` to hide/show the persistent widget without changing board state.
+- [x] Rename `/board-show` to `/board-snapshot` so message snapshots are explicit.
