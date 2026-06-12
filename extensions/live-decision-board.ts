@@ -70,7 +70,7 @@ export function clearBoard(board: BoardState): BoardState {
 	const nextVersion = board.version + 1;
 	return {
 		version: nextVersion,
-		hardDecisionBarrierVersion: board.items.some(isAcceptedHardItem)
+		hardDecisionBarrierVersion: board.items.some(isEnforcedItem)
 			? nextVersion
 			: getHardDecisionBarrierVersion(board),
 		nextAssumptionId: 1,
@@ -91,12 +91,20 @@ function isAcceptedHardItem(item: Pick<BoardItem, "status" | "strength">): boole
 	return item.status === "accepted" && item.strength === "hard";
 }
 
+function isEnforcedItem(item: Pick<BoardItem, "status">): boolean {
+	return item.status === "accepted";
+}
+
 function getHardDecisionBarrierVersion(board: BoardState): number {
-	return board.hardDecisionBarrierVersion ?? maxAcceptedHardItemVersion(board.items);
+	return board.hardDecisionBarrierVersion ?? maxEnforcedItemVersion(board.items);
+}
+
+function maxEnforcedItemVersion(items: BoardItem[]): number {
+	return items.reduce((maxVersion, item) => (isEnforcedItem(item) ? Math.max(maxVersion, item.version) : maxVersion), 0);
 }
 
 function maxAcceptedHardItemVersion(items: BoardItem[]): number {
-	return items.reduce((maxVersion, item) => (isAcceptedHardItem(item) ? Math.max(maxVersion, item.version) : maxVersion), 0);
+	return maxEnforcedItemVersion(items);
 }
 
 export function addBoardItem(board: BoardState, input: NewBoardItem): BoardState {
@@ -123,7 +131,7 @@ export function addBoardItem(board: BoardState, input: NewBoardItem): BoardState
 
 	return {
 		version: nextVersion,
-		hardDecisionBarrierVersion: isAcceptedHardItem(item) ? nextVersion : getHardDecisionBarrierVersion(board),
+		hardDecisionBarrierVersion: isEnforcedItem(item) ? nextVersion : getHardDecisionBarrierVersion(board),
 		nextAssumptionId: input.kind === "assumption" ? board.nextAssumptionId + 1 : board.nextAssumptionId,
 		nextDecisionId: input.kind === "decision" ? board.nextDecisionId + 1 : board.nextDecisionId,
 		items: [...board.items, item],
@@ -152,11 +160,11 @@ export function updateBoardItem(board: BoardState, id: string, patch: BoardPatch
 	if (!changed) return board;
 
 	const nextVersion = board.version + 1;
-	const hardDecisionChanged = isAcceptedHardItem(existing) || isAcceptedHardItem(effective);
+	const enforcementChanged = enforcedBoundaryChanged(existing, effective);
 	return {
 		...board,
 		version: nextVersion,
-		hardDecisionBarrierVersion: hardDecisionChanged ? nextVersion : getHardDecisionBarrierVersion(board),
+		hardDecisionBarrierVersion: enforcementChanged ? nextVersion : getHardDecisionBarrierVersion(board),
 		items: board.items.map((item) =>
 			item.id === normalizedId ? { ...effective, version: nextVersion, updatedAt: now() } : item,
 		),
@@ -505,7 +513,7 @@ function normalizeBoardState(value: unknown): BoardState | undefined {
 		else maxDecisionId = Math.max(maxDecisionId, numericId);
 	}
 
-	const requiredBarrier = maxAcceptedHardItemVersion(items);
+	const requiredBarrier = maxEnforcedItemVersion(items);
 	const restoredBarrier = candidate.hardDecisionBarrierVersion ?? requiredBarrier;
 	return {
 		version,
@@ -666,28 +674,31 @@ function hardDecisionBoundaryChanged(previousItems: BoardItem[], nextItems: Boar
 	const previousById = new Map(previousItems.map((item) => [item.id, item]));
 
 	for (const previous of previousItems) {
-		if (!isAcceptedHardItem(previous)) continue;
+		if (!isEnforcedItem(previous)) continue;
 		const next = nextById.get(previous.id);
-		if (!next || !isSameDecisionBoundary(previous, next)) return true;
+		if (!next || enforcedBoundaryChanged(previous, next)) return true;
 	}
 
 	for (const next of nextItems) {
-		if (!isAcceptedHardItem(next)) continue;
+		if (!isEnforcedItem(next)) continue;
 		const previous = previousById.get(next.id);
-		if (!previous || !isSameDecisionBoundary(previous, next)) return true;
+		if (!previous || enforcedBoundaryChanged(previous, next)) return true;
 	}
 
 	return false;
 }
 
-function isSameDecisionBoundary(left: BoardItem, right: BoardItem): boolean {
+function isSameEnforcedBoundary(left: BoardItem, right: BoardItem): boolean {
 	return (
 		left.kind === right.kind &&
 		left.text === right.text &&
 		left.status === right.status &&
-		left.strength === right.strength &&
 		left.supersedes === right.supersedes
 	);
+}
+
+function enforcedBoundaryChanged(left: BoardItem, right: BoardItem): boolean {
+	return isEnforcedItem(left) || isEnforcedItem(right) ? !isSameEnforcedBoundary(left, right) : false;
 }
 
 function isBoardKind(value: string): value is BoardKind {
