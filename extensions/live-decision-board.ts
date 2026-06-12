@@ -235,21 +235,7 @@ interface SkippedRecommendation {
 	reason: string;
 }
 
-const reviewCleanupRecommendationSchema = Type.Object({
-	id: Type.String({ minLength: 1 }),
-	itemVersion: Type.Integer({ minimum: 1 }),
-	observedText: Type.String(),
-	observedStatus: StringEnum(["proposed", "accepted", "rejected", "superseded"] as const),
-	observedStrength: StringEnum(["soft", "hard"] as const),
-	action: StringEnum(["keep", "archive", "supersede", "needs_user_review"] as const),
-	replacementText: Type.Optional(Type.String()),
-	confidence: Type.Optional(StringEnum(["low", "medium", "high"] as const)),
-	riskLevel: StringEnum(["low", "medium", "high"] as const),
-	requiresExplicitConfirmation: Type.Boolean(),
-	reason: Type.String(),
-	evidence: Type.Optional(Type.Array(Type.String())),
-	selected: Type.Optional(Type.Boolean()),
-});
+const reviewCleanupRecommendationSchema = Type.Record(Type.String(), Type.Any());
 
 export function recommendBoardCleanup(board: BoardState): CleanupRecommendation[] {
 	return activeBoardItems(board).sort(compareWidgetItems).map(recommendCleanupForItem);
@@ -361,6 +347,7 @@ function normalizeImportedCleanupRecommendations(
 	const boardItems = new Map(board.items.map((item) => [item.id, item] as const));
 	const recommendations: CleanupRecommendation[] = [];
 	const skipped: SkippedRecommendation[] = [];
+	const acceptedRecommendationIds = new Set<string>();
 
 	for (const rawRecommendation of rawRecommendations) {
 		if (!isReviewCleanupRecommendation(rawRecommendation)) {
@@ -382,6 +369,11 @@ function normalizeImportedCleanupRecommendations(
 			skipped.push({ id: recommendation.id, reason: `Board item ${recommendation.id} changed since cleanup was prepared` });
 			continue;
 		}
+		if (acceptedRecommendationIds.has(recommendation.id)) {
+			skipped.push({ id: recommendation.id, reason: `Duplicate cleanup recommendation for ${recommendation.id}` });
+			continue;
+		}
+		acceptedRecommendationIds.add(recommendation.id);
 
 		let action = recommendation.action;
 		let replacementText = recommendation.replacementText?.trim();

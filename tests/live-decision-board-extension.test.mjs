@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { Check } from "typebox/value";
 
 const require = createRequire(import.meta.url);
 
@@ -1044,35 +1045,153 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 	assert.equal(typeof stale?.id, "string");
 	assert.equal(typeof latest?.id, "string");
 
+	const mixedRecommendationsPayload = {
+		action: "review_cleanup",
+		recommendations: [
+			{
+				id: "malformed-missing-reason",
+				itemVersion: latest.version,
+				observedText: latest.text,
+				observedStatus: latest.status,
+				observedStrength: latest.strength,
+				action: "archive",
+				riskLevel: "low",
+				requiresExplicitConfirmation: false,
+				confidence: "high",
+				evidence: ["local test"],
+			},
+			{
+				id: "D1",
+				itemVersion: stale.version - 1,
+				observedText: "does-not-match-stale-text",
+				observedStatus: stale.status,
+				observedStrength: stale.strength,
+				action: "archive",
+				riskLevel: "low",
+				requiresExplicitConfirmation: false,
+				reason: "Stale suggestion",
+				confidence: "high",
+				evidence: ["local test"],
+			},
+			{
+				id: "D2",
+				itemVersion: latest.version,
+				observedText: latest.text,
+				observedStatus: latest.status,
+				observedStrength: latest.strength,
+				action: "archive",
+				riskLevel: "low",
+				requiresExplicitConfirmation: false,
+				reason: "Fresh recommendation",
+				confidence: "low",
+				evidence: ["local test"],
+			},
+		],
+	};
+	assert.equal(Check(localTool.parameters, mixedRecommendationsPayload), true, "tool schema should allow malformed recommendations through so normalization can skip/report them");
+
 	toolResult = await localTool.execute(
 		"review-tool-stale",
+		mixedRecommendationsPayload,
+		undefined,
+		undefined,
+		localCtx,
+	);
+	assert.match(reviewCleanupRender[0], /\[x\]\s*\[D2\] accepted Archive/i);
+	assert.doesNotMatch(reviewCleanupRender[0], /\[D1\]/, "stale recommendations should be skipped before opening UI");
+	assert.equal(confirmCalled, true, "fresh imported recommendation should still allow confirmation");
+	assert.match(toolResult.content[0].text, /2 skipped/i);
+	assert.equal(localEntries.at(-1).data.items.find((item) => item.id === "D2")?.status, "rejected");
+	assert.equal(localEntries.at(-1).data.items.find((item) => item.id === "D1")?.status, stale.status);
+	assert.equal(toolResult.details?.skipped?.length, 2, "tool result should report skipped recommendations");
+	assert.equal(toolResult.details?.skipped?.[0]?.id, "malformed-missing-reason");
+	assert.equal(toolResult.details?.skipped?.[1]?.id, "D1");
+}
+
+{
+	const localCommands = new Map();
+	const localEvents = new Map();
+	const localEntries = [];
+	let localTool;
+	let confirmCalled = false;
+	let toolResult;
+	const localCtx = {
+		hasUI: true,
+		mode: "tui",
+		isIdle: () => true,
+		sessionManager: { getBranch: () => localEntries },
+		ui: {
+			theme: { fg: (_color, text) => text },
+			setStatus: () => {},
+			setWidget: () => {},
+			notify: () => {},
+			confirm: async () => {
+				confirmCalled = true;
+				return true;
+			},
+			editor: async (_title, initial) => initial,
+			custom: async (factory) => {
+				let result;
+				const component = factory({ requestRender: () => {} }, { fg: (_color, text) => text }, {}, (value) => {
+					result = value;
+				});
+				component.handleInput("\r");
+				return result;
+			},
+		},
+	};
+
+	extension({
+		on(eventName, callback) {
+			localEvents.set(eventName, callback);
+		},
+		registerCommand(name, def) {
+			localCommands.set(name, def);
+		},
+		registerTool(tool) {
+			localTool = tool;
+		},
+		appendEntry(customType, data) {
+			localEntries.push({ type: "custom", customType, data });
+		},
+		sendMessage() {},
+	});
+
+	await localEvents.get("session_start")({}, localCtx);
+	await localCommands.get("decide").handler("Duplicate cleanup target", localCtx);
+	const startingBoard = localEntries.at(-1).data;
+	const d1 = startingBoard.items.find((item) => item.id === "D1");
+	assert.equal(typeof d1?.id, "string");
+
+	toolResult = await localTool.execute(
+		"review-tool-duplicate",
 		{
 			action: "review_cleanup",
 			recommendations: [
 				{
 					id: "D1",
-					itemVersion: stale.version - 1,
-					observedText: "does-not-match-stale-text",
-					observedStatus: stale.status,
-					observedStrength: stale.strength,
+					itemVersion: d1.version,
+					observedText: d1.text,
+					observedStatus: d1.status,
+					observedStrength: d1.strength,
 					action: "archive",
 					riskLevel: "low",
 					requiresExplicitConfirmation: false,
-					reason: "Stale suggestion",
+					reason: "First duplicate recommendation",
 					confidence: "high",
 					evidence: ["local test"],
 				},
 				{
-					id: "D2",
-					itemVersion: latest.version,
-					observedText: latest.text,
-					observedStatus: latest.status,
-					observedStrength: latest.strength,
+					id: "D1",
+					itemVersion: d1.version,
+					observedText: d1.text,
+					observedStatus: d1.status,
+					observedStrength: d1.strength,
 					action: "archive",
 					riskLevel: "low",
 					requiresExplicitConfirmation: false,
-					reason: "Fresh recommendation",
-					confidence: "low",
+					reason: "Second duplicate recommendation",
+					confidence: "medium",
 					evidence: ["local test"],
 				},
 			],
@@ -1081,14 +1200,11 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 		undefined,
 		localCtx,
 	);
-	assert.match(reviewCleanupRender[0], /\[x\]\s*\[D2\] accepted Archive/i);
-	assert.doesNotMatch(reviewCleanupRender[0], /\[D1\]/, "stale recommendations should be skipped before opening UI");
-	assert.equal(confirmCalled, true, "fresh imported recommendation should still allow confirmation");
-	assert.match(toolResult.content[0].text, /1 skipped/i);
-	assert.equal(localEntries.at(-1).data.items.find((item) => item.id === "D2")?.status, "rejected");
-	assert.equal(localEntries.at(-1).data.items.find((item) => item.id === "D1")?.status, stale.status);
-	assert.equal(toolResult.details?.skipped?.length, 1, "tool result should report skipped recommendations");
+	assert.equal(confirmCalled, true, "first duplicate should remain reviewable and confirmable");
+	assert.match(toolResult.content[0].text, /1 skipped/i, "duplicate imported recommendations should be skipped and reported");
 	assert.equal(toolResult.details?.skipped?.[0]?.id, "D1");
+	assert.match(toolResult.details?.skipped?.[0]?.reason, /duplicate/i);
+	assert.equal(localEntries.at(-1).data.items.find((item) => item.id === "D1")?.status, "rejected");
 }
 
 {
