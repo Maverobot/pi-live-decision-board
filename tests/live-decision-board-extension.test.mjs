@@ -67,7 +67,7 @@ assert.doesNotMatch(commands.get("assume").description, /soft|hard/i, "assume co
 assert.match(commands.get("decide").description, /accepted decision/i, "decide command should use accepted-item wording");
 assert.doesNotMatch(commands.get("decide").description, /soft|hard/i, "decide command should not expose legacy strength wording");
 assert.match(commands.get("board-manage").description, /primary/i, "board-manage should be described as the primary item-action UI");
-assert.doesNotMatch(commands.get("board-manage").description, /\bclear\b/i, "board-manage should not advertise clear before the manager clear action exists");
+assert.match(commands.get("board-manage").description, /\bclear\b/i, "board-manage should advertise clear after Task 2");
 assert.match(commands.get("board-reject").description, /fallback/i, "board-reject should be documented as a fallback command");
 assert.match(commands.get("board-reject").description, /prefer\s+\/board-manage/i, "board-reject should prefer board-manage");
 assert.match(commands.get("board-accept").description, /fallback/i, "board-accept should be documented as a fallback command");
@@ -75,7 +75,7 @@ assert.match(commands.get("board-accept").description, /prefer\s+\/board-manage/
 assert.match(commands.get("board-supersede").description, /fallback/i, "board-supersede should be documented as a fallback command");
 assert.match(commands.get("board-supersede").description, /prefer\s+\/board-manage/i, "board-supersede should prefer board-manage");
 assert.match(commands.get("board-clear").description, /fallback/i, "board-clear should be documented as a fallback command");
-assert.doesNotMatch(commands.get("board-clear").description, /prefer\s+\/board-manage/i, "board-clear should not prefer board-manage until manager clear exists");
+assert.match(commands.get("board-clear").description, /prefer\s+\/board-manage/i, "board-clear should prefer board-manage once manager clear exists");
 
 assert.match(commands.get("board-hard").description, /accepted items are enforced automatically/i, "board-hard help should say it is compatibility-only");
 assert.doesNotMatch(commands.get("board-hard").description, /accepted decisions|enforce board items/i, "board-hard help should not imply it performs enforcement or only covers decisions");
@@ -1005,9 +1005,162 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 	assert.match(rendered[0], /Live Decision Board Manager/, "board-manage should render a titled keyboard UI");
 	assert.match(rendered[0], /> \[D1\]/, "manager initially selects the first sorted decision");
 	assert.match(rendered[0], /e edit/, "manager renders keyboard help");
+	assert.match(rendered[0], /c clear/, "manager help should expose clear action");
 	assert.doesNotMatch(rendered[0], /\bh hard\b/, "manager help should not show harden action");
 	assert.doesNotMatch(rendered[0], /\bs soft\b/, "manager help should not show soften action");
 	assert.match(rendered[1], /> \[A1\]/, "j/down moves selection to the next item");
+}
+
+{
+	const localCommands = new Map();
+	const localEvents = new Map();
+	const localEntries = [];
+	let confirmTitle = "";
+	let confirmMessage = "";
+	let latestNotification = "";
+	const testTheme = { fg: (_color, text) => text };
+	const queuedKeys = ["c", "q"];
+	const localCtx = {
+		mode: "tui",
+		hasUI: true,
+		isIdle: () => true,
+		sessionManager: { getBranch: () => [] },
+		ui: {
+			theme: testTheme,
+			setStatus: () => {},
+			setWidget: () => {},
+			notify: (message) => {
+				latestNotification = message;
+			},
+			confirm: async (title, message) => {
+				confirmTitle = title;
+				confirmMessage = message;
+				return true;
+			},
+			editor: async (_title, initial) => initial,
+			custom: async (factory) => {
+				let result;
+				const component = factory({ requestRender: () => {} }, testTheme, {}, (value) => {
+					result = value;
+				});
+				component.handleInput(queuedKeys.shift());
+				return result;
+			},
+		},
+	};
+
+	extension({
+		on(eventName, callback) {
+			localEvents.set(eventName, callback);
+		},
+		registerCommand(name, def) {
+			localCommands.set(name, def);
+		},
+		registerTool() {},
+		appendEntry(customType, data) {
+			localEntries.push({ type: "custom", customType, data });
+		},
+		sendMessage() {},
+	});
+
+	await localEvents.get("session_start")({}, localCtx);
+	await localCommands.get("assume").handler("Manager clear assumption", localCtx);
+	await localCommands.get("decide").handler("Manager clear decision", localCtx);
+	const entriesBeforeClear = localEntries.length;
+	await localCommands.get("board-manage").handler("", localCtx);
+	assert.equal(confirmTitle, "Clear Live Decision Board?");
+	assert.match(confirmMessage, /This clears assumptions and decisions for this branch\./);
+	assert.equal(localEntries.length, entriesBeforeClear + 1, "manager clear persists exactly once after confirmation");
+	assert.deepEqual(localEntries.at(-1).data.items, [], "manager clear removes all board items");
+	assert.match(latestNotification, /Cleared board/);
+}
+
+{
+	const localCommands = new Map();
+	const localEvents = new Map();
+	const localEntries = [];
+	let latestNotification = "";
+	let localBranchEntries = [];
+	let resolveConfirm;
+	let managerKeyIndex = 0;
+	const managerKeys = ["c", "q"];
+	const confirmResult = new Promise((resolve) => {
+		resolveConfirm = resolve;
+	});
+	const sameVersionAcceptedBoard = {
+		version: 1,
+		hardDecisionBarrierVersion: 1,
+		nextAssumptionId: 2,
+		nextDecisionId: 1,
+		items: [
+			{
+				id: "A1",
+				kind: "assumption",
+				text: "Manager stale clear assumption",
+				status: "accepted",
+				strength: "soft",
+				source: "user",
+				version: 1,
+				createdAt: 1,
+				updatedAt: 1,
+			},
+		],
+	};
+	const localCtx = {
+		mode: "tui",
+		hasUI: true,
+		isIdle: () => true,
+		sessionManager: { getBranch: () => localBranchEntries },
+		ui: {
+			theme: { fg: (_color, text) => text },
+			setStatus: () => {},
+			setWidget: () => {},
+			notify: (message) => {
+				latestNotification = message;
+			},
+			confirm: async () => confirmResult,
+			editor: async (_title, initial) => initial,
+			custom: async (factory) => {
+				let result;
+				const component = factory({ requestRender: () => {} }, { fg: (_color, text) => text }, {}, (value) => {
+					result = value;
+				});
+				component.handleInput(managerKeys[managerKeyIndex] ?? "q");
+				managerKeyIndex += 1;
+				return result;
+			},
+		},
+	};
+
+	extension({
+		on(eventName, callback) {
+			localEvents.set(eventName, callback);
+		},
+		registerCommand(name, def) {
+			localCommands.set(name, def);
+		},
+		registerTool() {},
+		appendEntry(customType, data) {
+			localEntries.push({ type: "custom", customType, data });
+		},
+		sendMessage() {},
+	});
+
+	await localEvents.get("session_start")({}, localCtx);
+	await localCommands.get("decide").handler("Manager stale clear decision", localCtx);
+	const managePromise = localCommands.get("board-manage").handler("", localCtx);
+	await Promise.resolve();
+	const staleBoard = {
+		...sameVersionAcceptedBoard,
+	};
+	localBranchEntries.length = 0;
+	localBranchEntries.push({ type: "custom", customType: "live-decision-board", data: staleBoard });
+	await localEvents.get("session_tree")({}, localCtx);
+	const entriesBeforeStaleClear = localEntries.length;
+	resolveConfirm(true);
+	await managePromise;
+	assert.equal(localEntries.length, entriesBeforeStaleClear, "stale manager clear confirmations should persist nothing");
+	assert.match(latestNotification, /changed while clear confirmation was open/i);
 }
 
 {
@@ -1059,7 +1212,6 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 	await localCommands.get("board-manage").handler("", localCtx);
 	assert.equal(localEntries.length, entriesBeforeNoOpManager, "manager no-op actions should not persist duplicate board entries");
 }
-
 {
 	const localCommands = new Map();
 	const localEvents = new Map();

@@ -847,6 +847,7 @@ function getCustomType(message: unknown): string {
 
 type BoardManagerAction =
 	| { type: "close" }
+	| { type: "clear" }
 	| { type: "edit" | "accept" | "reject" | "supersede"; id: string };
 
 type CleanupReviewResult = { type: "cancel" } | { type: "apply"; recommendations: CleanupRecommendation[] };
@@ -888,6 +889,10 @@ class BoardManagerComponent {
 			this.moveSelection(-1);
 			return;
 		}
+		if (data === "c") {
+			this.done({ type: "clear" });
+			return;
+		}
 
 		const selected = this.items[this.selectedIndex];
 		if (!selected) return;
@@ -915,7 +920,7 @@ class BoardManagerComponent {
 			}
 		}
 
-		lines.push("", truncateToWidth(this.theme.fg("dim", "↑↓/j/k select • enter/e edit • a accept • r reject/remove • u supersede • q/esc close"), width));
+		lines.push("", truncateToWidth(this.theme.fg("dim", "↑↓/j/k select • enter/e edit • a accept • r reject/remove • u supersede • c clear • q/esc close"), width));
 		this.cachedWidth = width;
 		this.cachedLines = lines;
 		return lines;
@@ -1226,6 +1231,11 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 	}
 
 	async function applyBoardManagerAction(ctx: ExtensionContext, action: Exclude<BoardManagerAction, { type: "close" }>): Promise<void> {
+		if (action.type === "clear") {
+			await confirmAndClearBoard(ctx, "Live Decision Board changed while clear confirmation was open; rerun /board-manage on the latest board.");
+			return;
+		}
+
 		const item = board.items.find((candidate) => candidate.id === action.id);
 		if (!item) {
 			ctx.ui.notify(`Board item not found: ${action.id}`, "error");
@@ -1271,6 +1281,22 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 			return;
 		}
 		safeApplyBoard(ctx, "Superseded item", () => supersedeBoardItem(board, item.id, replacementText, "user"));
+	}
+
+	async function confirmAndClearBoard(ctx: ExtensionContext, staleMessage: string): Promise<void> {
+		const baseEpoch = boardEpoch;
+		if (ctx.hasUI) {
+			const confirmed = await ctx.ui.confirm(
+				"Clear Live Decision Board?",
+				"This clears assumptions and decisions for this branch.",
+			);
+			if (!confirmed) return;
+			if (boardEpoch !== baseEpoch) {
+				ctx.ui.notify(staleMessage, "warning");
+				return;
+			}
+		}
+		safeApplyBoard(ctx, "Cleared board", () => clearBoard(board));
 	}
 
 	async function cleanupBoard(ctx: ExtensionContext): Promise<void> {
@@ -1337,7 +1363,7 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 	});
 
 	pi.registerCommand("board-manage", {
-		description: "Primary UI for live board item actions: edit, accept/reject, or supersede",
+		description: "Primary UI for live board item actions: edit, accept/reject, supersede, or clear",
 		handler: async (_args, ctx) => {
 			if (ctx.mode !== "tui") return ctx.ui.notify("/board-manage requires TUI mode", "error");
 			await manageBoard(ctx);
@@ -1409,21 +1435,9 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 	});
 
 	pi.registerCommand("board-clear", {
-		description: "Power-user fallback: clear the live board after confirmation",
+		description: "Power-user fallback: clear the live board after confirmation; prefer /board-manage",
 		handler: async (_args, ctx) => {
-			const baseEpoch = boardEpoch;
-			if (ctx.hasUI) {
-				const confirmed = await ctx.ui.confirm(
-					"Clear Live Decision Board?",
-					"This clears assumptions and decisions for this branch.",
-				);
-				if (!confirmed) return;
-				if (boardEpoch !== baseEpoch) {
-					ctx.ui.notify("Live Decision Board changed while confirmation was open; rerun /board-clear on the latest board.", "warning");
-					return;
-				}
-			}
-			safeApplyBoard(ctx, "Cleared board", () => clearBoard(board));
+			await confirmAndClearBoard(ctx, "Live Decision Board changed while confirmation was open; rerun /board-clear on the latest board.");
 		},
 	});
 
