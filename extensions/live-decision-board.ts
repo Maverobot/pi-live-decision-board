@@ -374,10 +374,11 @@ export function formatBoardForPrompt(board: BoardState): string {
 	const decisions = active.filter((item) => item.kind === "decision");
 	const lines = [`## Live Assumptions & Decisions — version ${board.version}`, ""];
 	lines.push("Rules:");
-	lines.push("- Treat hard accepted decisions as constraints before mutating files.");
-	lines.push("- Hard means an enforced constraint: use it only for user-stated constraints, safety-critical rules, or decisions that should block stale mutating tools; do not use hard merely to mean important.");
+	lines.push("- Treat accepted items as enforced current context before mutating files.");
+	lines.push("- Proposed items are visible drafts; reconcile or accept them before relying on them as enforced context.");
 	lines.push("- If current work conflicts with this board, reconcile before continuing.");
-	lines.push("- Record only assumptions or decisions that should affect future behavior; do not use the board as an implementation log.", "");
+	lines.push("- Record only assumptions or decisions that should affect future behavior; do not use the board as an implementation log.");
+	lines.push("");
 	lines.push("Assumptions:");
 	lines.push(...(assumptions.length ? assumptions.map(formatPromptItem) : ["- none"]));
 	lines.push("", "Decisions:");
@@ -386,15 +387,14 @@ export function formatBoardForPrompt(board: BoardState): string {
 }
 
 function formatPromptItem(item: BoardItem): string {
-	return `- ${item.id}: ${item.text} [${item.status}, ${item.strength}, source:${item.source}, v${item.version}]`;
+	return `- ${item.id}: ${item.text} [${item.status}, source:${item.source}, v${item.version}]`;
 }
 
 export function formatBoardStatus(board: BoardState): string {
 	const active = activeBoardItems(board);
 	const assumptions = active.filter((item) => item.kind === "assumption").length;
 	const decisions = active.filter((item) => item.kind === "decision").length;
-	const hardCount = active.filter((item) => item.status === "accepted" && item.strength === "hard").length;
-	return `Board v${board.version} • ${pluralize(assumptions, "assumption")} • ${pluralize(decisions, "decision")} • ${pluralize(hardCount, "hard constraint")}`;
+	return `Board v${board.version} • ${pluralize(assumptions, "assumption")} • ${pluralize(decisions, "decision")}`;
 }
 
 function pluralize(count: number, label: string): string {
@@ -405,12 +405,10 @@ function formatBoardStatusForWidget(board: BoardState, theme: Theme): string {
 	const active = activeBoardItems(board);
 	const assumptions = active.filter((item) => item.kind === "assumption").length;
 	const decisions = active.filter((item) => item.kind === "decision").length;
-	const hardCount = active.filter((item) => item.status === "accepted" && item.strength === "hard").length;
 	return [
 		theme.fg("muted", "Board"),
 		theme.fg("success", pluralize(assumptions, "assumption")),
 		theme.fg("success", pluralize(decisions, "decision")),
-		theme.fg(hardCount > 0 ? "warning" : "dim", pluralize(hardCount, "hard constraint")),
 	].join(" • ");
 }
 
@@ -430,8 +428,7 @@ function colorizeWidgetLine(line: string, theme: Theme): string {
 
 	const item = /^([!•]) \[([AD]\d+)] (.*)$/.exec(line);
 	if (!item) return line;
-	const marker = item[1] === "!" ? theme.fg("warning", "!") : theme.fg("dim", "•");
-	return `${marker} ${theme.fg("accent", `[${item[2]}]`)} ${theme.fg("muted", item[3])}`;
+	return `${theme.fg("dim", "•")} ${theme.fg("accent", `[${item[2]}]`)} ${theme.fg("muted", item[3])}`;
 }
 
 export function formatBoardWidget(board: BoardState, options: { maxItems?: number } = {}): string[] {
@@ -463,8 +460,7 @@ function appendWidgetSection(lines: string[], label: string, items: BoardItem[],
 	}
 	const visibleItems = items.slice(0, remainingItems);
 	for (const item of visibleItems) {
-		const marker = item.strength === "hard" ? "!" : "•";
-		lines.push(`${marker} [${item.id}] ${item.text}`);
+		lines.push(`• [${item.id}] ${item.text}`);
 	}
 	const hiddenItems = items.length - visibleItems.length;
 	if (hiddenItems > 0) lines.push(`… ${pluralize(hiddenItems, `more ${singularLabel}`)}`);

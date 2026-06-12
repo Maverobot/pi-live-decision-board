@@ -40,8 +40,9 @@ const prompt = mod.formatBoardForPrompt(withDecision);
 assert.match(prompt, /Live Assumptions & Decisions — version 2/);
 assert.match(prompt, /A1: Backend uses Node 22/);
 assert.match(prompt, /D1: Build as a Pi extension first/);
-assert.match(prompt, /hard/);
-assert.match(prompt, /Hard means an enforced constraint/, "prompt guidance explains when hard is appropriate");
+assert.match(prompt, /Treat accepted items as enforced current context before mutating files/);
+assert.match(prompt, /Proposed items are visible drafts/, "prompt explains proposed-item drafts");
+assert.doesNotMatch(prompt, /\bsoft\b|\bhard\b/, "prompt metadata should hide legacy strength labels");
 
 const widgetDecisionOne = mod.addBoardItem(withAssumption, {
 	kind: "decision",
@@ -68,7 +69,7 @@ const widget = mod.formatBoardWidget(widgetBoard, { maxItems: 5 });
 assert.deepEqual(
 	widget,
 	[
-		"Board v4 • 2 assumptions • 2 decisions • 0 hard constraints",
+		"Board v4 • 2 assumptions • 2 decisions",
 		"Decisions (2)",
 		"• [D1] First decision",
 		"• [D2] Second decision",
@@ -82,7 +83,7 @@ const inactiveDecisionBoard = mod.updateBoardItem(widgetBoard, "D1", { status: "
 assert.deepEqual(
 	mod.formatBoardWidget(inactiveDecisionBoard, { maxItems: 5 }),
 	[
-		"Board v5 • 2 assumptions • 1 decision • 0 hard constraints",
+		"Board v5 • 2 assumptions • 1 decision",
 		"Decisions (1)",
 		"• [D2] Second decision",
 		"Assumptions (2)",
@@ -199,7 +200,8 @@ const cleared = mod.clearBoard(withDecision);
 assert.equal(cleared.version, 3, "clearing keeps versions monotonic");
 assert.deepEqual(cleared.items, []);
 
-assert.match(mod.formatBoardStatus(withDecision), /Board v2 • 1 assumption • 1 decision • 1 hard constraint/);
+assert.match(mod.formatBoardStatus(withDecision), /Board v2 • 1 assumption • 1 decision/);
+assert.doesNotMatch(mod.formatBoardStatus(withDecision), /hard constraint/, "status summary should not include legacy hard constraint counts");
 
 const acceptedSoftBoard = mod.addBoardItem(mod.createEmptyBoard(), {
 	kind: "decision",
