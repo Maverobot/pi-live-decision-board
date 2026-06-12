@@ -378,11 +378,16 @@ Examples:
 * Subagent-assisted cleanup design
 Subagent cleanup should recommend, never apply.
 
-Potential command shapes:
+Implemented command shape:
 
-- =/board-cleanup= — manual/local cleanup MVP
-- =/board-cleanup --agent= — optional subagent recommendations later
-- =/board-cleanup --dry-run= — show recommendations without applying
+- =/board-cleanup-subagent= — implemented trigger command: the extension snapshots the active board and sends a structured cleanup request to the current Pi agent via =sendUserMessage=.
+
+This command does not directly launch subagents. The current/parent agent launches read-only recommendation subagents, then summarizes recommendations, asks for user confirmation, and applies only confirmed changes through normal board workflows.
+
+Historical/deferred command-shape notes:
+
+- =/board-cleanup --agent= — optional alternative considered during design
+- =/board-cleanup --dry-run= — optional deferred alternative for non-queued proposal-only mode
 
 ** Recommendation schema
 #+begin_src json
@@ -467,12 +472,17 @@ Current manager includes inactive items. A future mode split may reduce clutter:
 - History/archive
 
 ** How should subagent cleanup be invoked from an extension?
-The current extension API does not expose a direct subagent service. Options:
+The extension API does not expose a direct subagent service. Current implementation uses this pattern:
+
+- the extension snapshots board context and sends a structured cleanup request to the current Pi agent via =sendUserMessage=
+- the current/parent agent may launch read-only recommendation subagents and relay suggestions back
+- recommendations are applied only with user confirmation and freshness checks by the current agent
+
+Historical/deferred alternatives considered:
 
 - optional dependency/integration with a subagent extension
 - shell out to Pi/subagent process
-- send a follow-up user message requesting cleanup proposal
-- keep subagent cleanup outside the extension and implement local cleanup inside it
+- keep subagent cleanup outside the extension and implement local cleanup only inside it
 
 ** What is the right archive/audit mechanism?
 Options:
