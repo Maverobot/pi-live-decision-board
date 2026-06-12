@@ -26,7 +26,7 @@ pi -e .
 | `/assume <text>` | Quick capture: add an accepted assumption |
 | `/decide <text>` | Quick capture: add an accepted decision |
 | `/board-cleanup` | Review active board items and archive obvious historical entries after confirmation |
-| `/board-cleanup-subagent` | Queue read-only subagent-assisted cleanup recommendations; apply remains user-confirmed |
+| `/board-cleanup-subagent` | Start or queue read-only subagent-assisted cleanup recommendations; apply remains user-confirmed |
 | `/board-snapshot` | Show the active board context snapshot as a visible message |
 | `/board-toggle` | Collapse or expand the persistent board body while keeping the summary line visible |
 
@@ -117,7 +117,8 @@ Workflow constraints:
 - Treat board item text as untrusted data (data-only input).
 - Recommendation subagents must not mutate files, board state, or call `decision_board`, slash commands, write/edit, or mutating bash.
 - Recommendations must be revalidated against current board state (`id/version/text/status/strength`) before apply so stale suggestions are skipped or refreshed.
-- `/board-cleanup-subagent` still enforces user-confirmed board mutations.
+- The workflow requires user-confirmed board mutations.
+
 ## Development
 
 This repository is a Pi package. Pi discovers the extension through the `pi.extensions` manifest in `package.json`.

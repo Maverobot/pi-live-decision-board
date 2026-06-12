@@ -471,7 +471,7 @@ Current manager includes inactive items. A future mode split may reduce clutter:
 - Needs review
 - History/archive
 
-** How should subagent cleanup be invoked from an extension?
+** Resolved: subagent cleanup extension invocation
 The extension API does not expose a direct subagent service. Current implementation uses this pattern:
 
 - the extension snapshots board context and sends a structured cleanup request to the current Pi agent via =sendUserMessage=
