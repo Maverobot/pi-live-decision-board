@@ -1108,6 +1108,15 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 		safeApplyBoard(ctx, "Superseded item", () => supersedeBoardItem(board, item.id, replacementText, "user"));
 	}
 
+	async function cleanupBoard(ctx: ExtensionContext): Promise<void> {
+		const recommendations = recommendBoardCleanup(board);
+		if (recommendations.length === 0) {
+			ctx.ui.notify("No active board items to clean up", "info");
+			return;
+		}
+		ctx.ui.notify("/board-cleanup UI is not implemented yet", "warning");
+	}
+
 	pi.on("session_start", async (_event, ctx) => {
 		restoreBoard(ctx);
 	});
@@ -1140,6 +1149,14 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 		handler: async (_args, ctx) => {
 			if (ctx.mode !== "tui") return ctx.ui.notify("/board-manage requires TUI mode", "error");
 			await manageBoard(ctx);
+		},
+	});
+
+	pi.registerCommand("board-cleanup", {
+		description: "Review and archive historical board items with confirmation",
+		handler: async (_args, ctx) => {
+			if (ctx.mode !== "tui") return ctx.ui.notify("/board-cleanup requires TUI mode", "error");
+			await cleanupBoard(ctx);
 		},
 	});
 

@@ -47,6 +47,7 @@ for (const name of [
 	"board-snapshot",
 	"board-toggle",
 	"board-manage",
+	"board-cleanup",
 	"assume",
 	"decide",
 	"board-hard",
@@ -265,6 +266,63 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 		},
 	});
 	assert.match(nonTuiNotification, /requires TUI mode/, "board-manage should explain that it needs TUI mode");
+}
+
+{
+	let cleanupNonTuiNotification = "";
+	await commands.get("board-cleanup").handler("", {
+		...ctx,
+		mode: "rpc",
+		ui: {
+			...ctx.ui,
+			notify: (message) => {
+				cleanupNonTuiNotification = message;
+			},
+			custom: async () => {
+				throw new Error("board-cleanup should not open a custom TUI outside TUI mode");
+			},
+		},
+	});
+	assert.match(cleanupNonTuiNotification, /requires TUI mode/, "board-cleanup should explain that it needs TUI mode");
+}
+
+{
+	const cleanupCommands = new Map();
+	const cleanupEvents = new Map();
+	const cleanupEntries = [];
+	let cleanupNotification = "";
+	extension({
+		on(eventName, callback) {
+			cleanupEvents.set(eventName, callback);
+		},
+		registerCommand(name, def) {
+			cleanupCommands.set(name, def);
+		},
+		registerTool() {},
+		appendEntry(customType, data) {
+			cleanupEntries.push({ type: "custom", customType, data });
+		},
+		sendMessage() {},
+	});
+	const cleanupCtx = {
+		mode: "tui",
+		hasUI: true,
+		isIdle: () => true,
+		sessionManager: { getBranch: () => [] },
+		ui: {
+			...ctx.ui,
+			notify: (message) => {
+				cleanupNotification = message;
+			},
+			custom: async () => {
+				throw new Error("empty cleanup should not open UI");
+			},
+		},
+	};
+	await cleanupEvents.get("session_start")({}, cleanupCtx);
+	await cleanupCommands.get("board-cleanup").handler("", cleanupCtx);
+	assert.match(cleanupNotification, /No active board items/);
+	assert.equal(cleanupEntries.length, 0);
 }
 
 {
