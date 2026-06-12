@@ -400,7 +400,6 @@ function formatBoardStatusForWidget(board: BoardState, theme: Theme): string {
 	const hardCount = active.filter((item) => item.status === "accepted" && item.strength === "hard").length;
 	return [
 		theme.fg("muted", "Board"),
-		theme.fg("accent", `v${board.version}`),
 		theme.fg("success", pluralize(assumptions, "assumption")),
 		theme.fg("success", pluralize(decisions, "decision")),
 		theme.fg(hardCount > 0 ? "warning" : "dim", pluralize(hardCount, "hard constraint")),
