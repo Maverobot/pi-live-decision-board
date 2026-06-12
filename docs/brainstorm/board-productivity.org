@@ -376,13 +376,13 @@ Examples:
 - Multiple UI rendering decisions -> one current product rule.
 
 * Subagent-assisted cleanup design
-Subagent cleanup should recommend, never apply; cleanup is then opened through `decision_board.review_cleanup` by the current/parent agent.
+Subagent cleanup should recommend, never apply. Use a single read-only recommendation subagent for future board cleanup runs; do not launch multiple parallel board-cleanup recommendation subagents unless explicitly requested. Cleanup is then opened through `decision_board.review_cleanup` by the current/parent agent.
 
 Implemented command shape:
 
 - =/board-cleanup-subagent= — implemented trigger command: the extension snapshots the active board and sends a structured cleanup request to the current Pi agent as a displayed custom handoff message.
 
-The handoff message is folded by default in the TUI, similar to shell/tool output, and expands with the normal tool-call expansion control to show the full generated prompt. This command does not directly launch subagents. The current/parent agent launches read-only recommendation subagents, summarizes recommendations, and calls `decision_board.review_cleanup` to review and confirm changes before applying.
+The handoff message is folded by default in the TUI, similar to shell/tool output, and expands with the normal tool-call expansion control to show the full generated prompt. This command does not directly launch subagents. The current/parent agent uses a single read-only recommendation subagent unless the user explicitly requests multiple parallel board-cleanup recommendation subagents, then calls `decision_board.review_cleanup` to review and confirm changes before applying.
 
 Historical/deferred command-shape notes:
 
@@ -475,7 +475,7 @@ Current manager includes inactive items. A future mode split may reduce clutter:
 The extension API does not expose a direct subagent service. Current implementation uses this pattern:
 
 - the extension snapshots board context and sends a structured cleanup request to the current Pi agent as a displayed, folded custom handoff message
-- the current/parent agent may launch read-only recommendation subagents and relay suggestions back
+- the current/parent agent uses a single read-only recommendation subagent unless the user explicitly requests multiple parallel board-cleanup recommendation subagents, then relays suggestions back
 - recommendations are opened for interactive review and confirmation through `decision_board.review_cleanup` with freshness checks by the current agent
 
 Historical/deferred alternatives considered:

@@ -97,9 +97,11 @@ assert.doesNotMatch(commands.get("board-hard").description, /accepted decisions|
 assert.equal(registeredTool.name, "decision_board", "decision_board tool should be registered");
 assert.equal(registeredTool.executionMode, "sequential", "decision_board runs sequentially before later tool preflights");
 const promptGuidelines = registeredTool.promptGuidelines.join("\n");
+const singleCleanupSubagentContract = "Use a single read-only recommendation subagent for future board cleanup runs; do not launch multiple parallel board-cleanup recommendation subagents unless explicitly requested.";
 assert.match(promptGuidelines, /accepted/i, "decision_board prompt guidance should mention accepted items");
 assert.match(promptGuidelines, /proposed/i, "decision_board prompt guidance should explain proposed items");
 assert.match(promptGuidelines, /enforce/i, "decision_board prompt guidance should mention enforcement");
+assert(promptGuidelines.includes(singleCleanupSubagentContract), "decision_board prompt guidance should enforce the single cleanup subagent contract");
 assert.match(promptGuidelines, /review_cleanup/i, "decision_board prompt guidance should mention subagent recommendation review");
 assert.match(promptGuidelines, /decision_board\.review_cleanup/i, "prompt guidance should direct to review_cleanup action");
 assert.doesNotMatch(promptGuidelines, /Ask the user/i, "prompt guidance should not direct ask_user in cleanup workflow");
@@ -419,6 +421,7 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 	assert.match(latestMessage.content, /Keep command surface stable/);
 	assert.match(latestMessage.content, /Use \/board-manage as primary UI/);
 	assert.match(latestMessage.content, /read-only/i);
+	assert(latestMessage.content.includes(singleCleanupSubagentContract), "cleanup handoff should enforce the single cleanup subagent contract");
 	assert.match(latestMessage.content, /Subagents must not mutate project files or board state/i);
 	assert.match(latestMessage.content, /Subagents must not call decision_board/i);
 	assert.match(latestMessage.content, /Only the current\/parent agent may apply explicitly confirmed board changes/i);
