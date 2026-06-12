@@ -830,6 +830,8 @@ type BoardManagerAction =
 	| { type: "close" }
 	| { type: "edit" | "accept" | "reject" | "harden" | "soften" | "supersede"; id: string };
 
+type CleanupReviewResult = { type: "cancel" } | { type: "apply"; recommendations: CleanupRecommendation[] };
+
 function compareManagerItems(a: BoardItem, b: BoardItem): number {
 	const activeRank = Number(isActiveItem(b)) - Number(isActiveItem(a));
 	if (activeRank !== 0) return activeRank;
@@ -932,6 +934,148 @@ class BoardManagerComponent {
 		this.selectedIndex = Math.max(0, Math.min(this.items.length - 1, this.selectedIndex + delta));
 		this.invalidate();
 		this.requestRender();
+	}
+}
+
+class BoardCleanupComponent {
+	private readonly recommendations: CleanupRecommendation[];
+	private selectedIndex = 0;
+	private cachedWidth?: number;
+	private cachedLines?: string[];
+
+	constructor(
+		recommendations: CleanupRecommendation[],
+		private readonly theme: Theme,
+		private readonly done: (result: CleanupReviewResult) => void,
+		private readonly requestRender: () => void,
+	) {
+		this.recommendations = recommendations
+			.map((recommendation) => ({ ...recommendation }))
+			.sort((left, right) => {
+				const actionOrder = this.actionOrder(left.action) - this.actionOrder(right.action);
+				if (actionOrder !== 0) return actionOrder;
+				return left.id.localeCompare(right.id);
+			});
+	}
+
+	handleInput(data: string): void {
+		if (matchesKey(data, Key.escape) || matchesKey(data, Key.ctrl("c")) || data === "q") {
+			this.done({ type: "cancel" });
+			return;
+		}
+
+		if (matchesKey(data, Key.down) || data === "j") {
+			this.moveSelection(1);
+			return;
+		}
+		if (matchesKey(data, Key.up) || data === "k") {
+			this.moveSelection(-1);
+			return;
+		}
+
+		if (data === " ") {
+			this.toggleSelection();
+			return;
+		}
+
+		if (matchesKey(data, Key.enter)) {
+			this.done({ type: "apply", recommendations: this.recommendations.map((recommendation) => ({ ...recommendation })) });
+		}
+	}
+
+	render(width: number): string[] {
+		if (this.cachedLines && this.cachedWidth === width) return this.cachedLines;
+		const selectedCount = this.recommendations.filter((rec) => rec.selected).length;
+		const lines = [
+			this.header(width),
+			truncateToWidth(`${this.recommendations.length} recommendations • ${selectedCount} selected`, width),
+			"",
+		];
+
+		if (this.recommendations.length === 0) {
+			lines.push(truncateToWidth(this.theme.fg("dim", "No cleanup recommendations."), width));
+		} else {
+			for (const [index, recommendation] of this.recommendations.entries()) {
+				const rendered = this.renderRecommendation(recommendation, index, width);
+				lines.push(rendered.main);
+				lines.push(rendered.reason);
+			}
+		}
+
+		lines.push("", truncateToWidth(this.theme.fg("dim", "↑↓/j/k select • space toggle • enter apply selected • q/esc cancel"), width));
+		this.cachedWidth = width;
+		this.cachedLines = lines;
+		return lines;
+	}
+
+	invalidate(): void {
+		this.cachedWidth = undefined;
+		this.cachedLines = undefined;
+	}
+
+	private header(width: number): string {
+		const title = ` ${this.theme.fg("accent", "Board Cleanup")} `;
+		return truncateToWidth(`${this.theme.fg("dim", "────")} ${title}${this.theme.fg("dim", "────")}`, width);
+	}
+
+	private moveSelection(delta: number): void {
+		if (this.recommendations.length === 0) return;
+		this.selectedIndex = Math.max(0, Math.min(this.recommendations.length - 1, this.selectedIndex + delta));
+		this.invalidate();
+		this.requestRender();
+	}
+
+	private toggleSelection(): void {
+		const recommendation = this.recommendations[this.selectedIndex];
+		if (!recommendation) return;
+		if (!this.canToggle(recommendation)) return;
+		recommendation.selected = !recommendation.selected;
+		this.invalidate();
+		this.requestRender();
+	}
+
+	private canToggle(recommendation: CleanupRecommendation): boolean {
+		return (recommendation.action === "archive" || recommendation.action === "supersede") && recommendation.riskLevel === "low" && !recommendation.requiresExplicitConfirmation;
+	}
+
+	private renderRecommendation(recommendation: CleanupRecommendation, index: number, width: number): { main: string; reason: string } {
+		const selected = index === this.selectedIndex;
+		const cursor = selected ? this.theme.fg("accent", ">") : " ";
+		const checkbox = recommendation.selected ? this.theme.fg("success", "[x]") : this.theme.fg("dim", "[ ]");
+		const id = this.theme.fg("accent", `[${recommendation.id}]`);
+		const action = this.theme.fg("warning", this.actionLabel(recommendation.action));
+		const risk = this.theme.fg("muted", recommendation.riskLevel);
+		const text = this.theme.fg("muted", recommendation.observedText);
+		return {
+			main: truncateToWidth(`${cursor} ${checkbox} ${id} ${action} • ${risk} • ${text}`, width),
+			reason: truncateToWidth(this.theme.fg("dim", `  ${recommendation.reason}`), width),
+		};
+	}
+
+	private actionLabel(action: CleanupAction): string {
+		switch (action) {
+			case "archive":
+				return "Archive from active board";
+			case "supersede":
+				return "Supersede with replacement";
+			case "needs_user_review":
+				return "Needs user review";
+			case "keep":
+				return "Keep";
+		}
+	}
+
+	private actionOrder(action: CleanupAction): number {
+		switch (action) {
+			case "archive":
+				return 0;
+			case "supersede":
+				return 1;
+			case "needs_user_review":
+				return 2;
+			case "keep":
+				return 3;
+		}
 	}
 }
 
@@ -1114,7 +1258,12 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 			ctx.ui.notify("No active board items to clean up", "info");
 			return;
 		}
-		ctx.ui.notify("/board-cleanup UI is not implemented yet", "warning");
+		const result = await ctx.ui.custom<CleanupReviewResult>(
+			(tui, theme, _keybindings, done) => new BoardCleanupComponent(recommendations, theme, done, () => tui.requestRender()),
+			{ overlay: true, overlayOptions: { width: "90%", minWidth: 70, maxHeight: "80%" } },
+		);
+		if (result.type === "cancel") return;
+		ctx.ui.notify("Cleanup apply is not implemented yet", "warning");
 	}
 
 	pi.on("session_start", async (_event, ctx) => {

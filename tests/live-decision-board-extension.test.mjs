@@ -326,6 +326,74 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 }
 
 {
+	const cleanupCommands = new Map();
+	const cleanupEvents = new Map();
+	const cleanupEntries = [];
+	const cleanupRendered = [];
+	const cleanupKeys = ["j", "k", " ", "q"];
+	let cleanupResult;
+	const testTheme = { fg: (_color, text) => text };
+	const cleanupCtx = {
+		mode: "tui",
+		hasUI: true,
+		isIdle: () => true,
+		sessionManager: { getBranch: () => [] },
+		ui: {
+			theme: testTheme,
+			setStatus: () => {},
+			setWidget: () => {},
+			notify: () => {},
+			confirm: async () => true,
+			editor: async () => "",
+			custom: async (factory) => {
+				let result;
+				const component = factory({ requestRender: () => {} }, testTheme, {}, (value) => {
+					result = value;
+				});
+				cleanupRendered.push(component.render(100).join("\n"));
+				component.handleInput(cleanupKeys.shift());
+				cleanupRendered.push(component.render(100).join("\n"));
+				component.handleInput(cleanupKeys.shift());
+				cleanupRendered.push(component.render(100).join("\n"));
+				component.handleInput(cleanupKeys.shift());
+				cleanupRendered.push(component.render(100).join("\n"));
+				component.handleInput(cleanupKeys.shift());
+				cleanupResult = result;
+				return result;
+			},
+		},
+	};
+
+	extension({
+		on(eventName, callback) {
+			cleanupEvents.set(eventName, callback);
+		},
+		registerCommand(name, def) {
+			cleanupCommands.set(name, def);
+		},
+		registerTool() {},
+		appendEntry(customType, data) {
+			cleanupEntries.push({ type: "custom", customType, data });
+		},
+		sendMessage() {},
+	});
+
+	await cleanupEvents.get("session_start")({}, cleanupCtx);
+	await cleanupCommands.get("decide").handler("Apply Round 5 review fixes", cleanupCtx);
+	await cleanupCommands.get("decide").handler("Core implementation constraint", cleanupCtx);
+	await cleanupCommands.get("board-hard").handler("D2", cleanupCtx);
+	await cleanupCommands.get("board-cleanup").handler("", cleanupCtx);
+	assert.match(cleanupRendered[0], /Board Cleanup/);
+	assert.match(cleanupRendered[0], /Archive from active board/);
+	assert.match(cleanupRendered[0], /Apply Round 5/);
+	assert.match(cleanupRendered[0], /Hard constraints are kept by default/);
+	assert.match(cleanupRendered[0], /space toggle/);
+	assert.notEqual(cleanupRendered[1], cleanupRendered[0], "j changes selection");
+	assert.notEqual(cleanupRendered[3], cleanupRendered[2], "space toggles selected action");
+	assert.equal(cleanupResult.type, "cancel");
+}
+
+{
 	const localCommands = new Map();
 	const localEvents = new Map();
 	const localEntries = [];
