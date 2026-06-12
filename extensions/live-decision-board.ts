@@ -2,7 +2,7 @@
  * Live Decision Board
  *
  * A Pi extension that keeps a visible, editable assumptions/decisions board,
- * injects the latest board into model context, and blocks stale hard-decision
+ * injects the latest board into model context, and blocks stale accepted-item
  * mutations until the board has been injected into a provider request.
  */
 
@@ -1371,7 +1371,7 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 	});
 
 	pi.registerCommand("board-hard", {
-		description: "Compatibility no-op: enforce board items as accepted decisions (no-op)",
+		description: "Compatibility no-op: accepted items are enforced automatically",
 		handler: async (_args, ctx) => {
 			ctx.ui.notify(`Compatibility: ${compatibilityStrengthMessage}`, "info");
 		},

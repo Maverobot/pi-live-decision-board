@@ -175,17 +175,17 @@ MVP behavior:
 1. Load current active board items only.
 2. Classify obvious historical accepted items as archive candidates.
 3. Keep accepted, proposed, and ambiguous items by default.
-4. Present a review UI sorted by recommended action, showing item id, status/strength, action, risk, text, and reason.
+4. Present a review UI sorted by recommended action, showing item id, status, compatibility strength when present, action, risk, text, and reason.
 5. Let user toggle selected low-risk archive actions, apply, or cancel.
 6. Apply selected archive actions through existing board helpers in one confirmed operation.
 
 MVP non-goals:
 
 - no automatic cleanup
-- no hard delete
+- no permanent delete
 - no default subagent/model cleanup
 - no git/docs/session context gathering
-- no harden/soften automation
+- no compatibility strength automation
 - no merge automation except maybe exact duplicate hints
 - no cleanup summary as an active board item
 
@@ -239,13 +239,13 @@ Groups:
 - Archive from active board
 - Supersede/edit
 - Needs user decision
-- Hard constraints requiring explicit confirmation
+- Accepted items requiring explicit confirmation
 
 ** Confirm screen
 Show before/after impact:
 
 - active item count before/after
-- hard constraint count before/after
+- accepted item count before/after
 - items archived
 - items superseded
 - items needing user review
@@ -344,14 +344,14 @@ Proposed guidance:
 - Before adding, inspect existing items; update, supersede, or ask about cleanup instead of adding duplicates.
 - Write evergreen constraint/preference text, not "we implemented..." or "round N fixed...".
 - Use =proposed= for uncertain items.
-- Do not accept, reject, soften, harden, archive, or supersede user/hard items without explicit user confirmation.
-- Use =hard= only for explicit user constraints or safety-critical rules that should block stale mutations.
+- Do not accept, reject, archive, or supersede user-owned or accepted items without explicit user confirmation.
+- Use =accepted= only when an item should become enforced current context; use =proposed= for drafts awaiting review.
 - If the board is becoming historical/noisy, suggest =/board-cleanup=; do not add a board item saying cleanup happened.
 
 * Local cleanup heuristics
 Local heuristics should be conservative and explainable. The MVP uses only archive, keep, and needs-review recommendations; supersede suggestions are deferred until a later workflow can edit replacement text safely.
 
-** MVP: suggest archive when soft accepted text looks historical
+** MVP: suggest archive when accepted text looks historical
 Examples:
 
 - starts with "Implement ..." and the feature exists/docs mention it
@@ -364,7 +364,7 @@ Examples:
 Especially for:
 
 - user preferences
-- hard items
+- accepted constraints
 - open product direction
 - safety constraints
 - items with unclear status
@@ -429,7 +429,7 @@ Supported actions should be intentionally small at first:
 - supersede
 - needs_user_review
 
-Defer merge, harden, soften, and delete to later workflows.
+Defer merge, compatibility strength edits, and delete to later workflows.
 
 * Proactive hygiene policy
 Proactive cleanup suggestions must be passive.

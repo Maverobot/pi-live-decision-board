@@ -66,6 +66,8 @@ assert.match(commands.get("assume").description, /accepted assumption/i, "assume
 assert.doesNotMatch(commands.get("assume").description, /soft|hard/i, "assume command should not expose legacy strength wording");
 assert.match(commands.get("decide").description, /accepted decision/i, "decide command should use accepted-item wording");
 assert.doesNotMatch(commands.get("decide").description, /soft|hard/i, "decide command should not expose legacy strength wording");
+assert.match(commands.get("board-hard").description, /accepted items are enforced automatically/i, "board-hard help should say it is compatibility-only");
+assert.doesNotMatch(commands.get("board-hard").description, /accepted decisions|enforce board items/i, "board-hard help should not imply it performs enforcement or only covers decisions");
 assert.equal(registeredTool.name, "decision_board", "decision_board tool should be registered");
 assert.equal(registeredTool.executionMode, "sequential", "decision_board runs sequentially before later tool preflights");
 const promptGuidelines = registeredTool.promptGuidelines.join("\n");
