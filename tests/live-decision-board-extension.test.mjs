@@ -21,6 +21,8 @@ let latestWidget;
 let latestStatus = "unset";
 let latestMessage;
 let latestSendOptions;
+let latestUserMessage;
+let latestUserMessageOptions;
 let latestNotificationMessage = "";
 let branchEntries = [];
 
@@ -41,6 +43,10 @@ extension({
 		latestMessage = message;
 		latestSendOptions = options;
 	},
+	sendUserMessage(content, options) {
+		latestUserMessage = content;
+		latestUserMessageOptions = options;
+	},
 });
 
 for (const name of [
@@ -49,6 +55,7 @@ for (const name of [
 	"board-toggle",
 	"board-manage",
 	"board-cleanup",
+	"board-cleanup-subagent",
 	"assume",
 	"decide",
 	"board-hard",
@@ -68,6 +75,8 @@ assert.match(commands.get("decide").description, /accepted decision/i, "decide c
 assert.doesNotMatch(commands.get("decide").description, /soft|hard/i, "decide command should not expose legacy strength wording");
 assert.match(commands.get("board-manage").description, /primary/i, "board-manage should be described as the primary item-action UI");
 assert.match(commands.get("board-manage").description, /\bclear\b/i, "board-manage should advertise clear after Task 2");
+assert.match(commands.get("board-cleanup-subagent").description, /subagent/i, "board-cleanup-subagent should mention subagent assistance");
+assert.match(commands.get("board-cleanup-subagent").description, /recommend/i, "board-cleanup-subagent should mention recommendations");
 assert.match(commands.get("board-reject").description, /fallback/i, "board-reject should be documented as a fallback command");
 assert.match(commands.get("board-reject").description, /prefer\s+\/board-manage/i, "board-reject should prefer board-manage");
 assert.match(commands.get("board-accept").description, /fallback/i, "board-accept should be documented as a fallback command");
@@ -322,6 +331,80 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 		},
 	});
 	assert.match(cleanupNonTuiNotification, /requires TUI mode/, "board-cleanup should explain that it needs TUI mode");
+}
+
+{
+	const localCommands = new Map();
+	const localEvents = new Map();
+	const localEntries = [];
+	let localNotification = "";
+	latestUserMessage = undefined;
+	latestUserMessageOptions = undefined;
+	extension({
+		on(eventName, callback) {
+			localEvents.set(eventName, callback);
+		},
+		registerCommand(name, def) {
+			localCommands.set(name, def);
+		},
+		registerTool() {},
+		appendEntry(customType, data) {
+			localEntries.push({ type: "custom", customType, data });
+		},
+		sendMessage() {},
+		sendUserMessage(content, options) {
+			latestUserMessage = content;
+			latestUserMessageOptions = options;
+		},
+	});
+
+	const localCtx = {
+		mode: "tui",
+		hasUI: true,
+		isIdle: () => true,
+		sessionManager: { getBranch: () => localEntries },
+		ui: {
+			theme: ctx.ui.theme,
+			setStatus: () => {},
+			setWidget: () => {},
+			notify: (message) => {
+				localNotification = message;
+			},
+			confirm: async () => true,
+			editor: async () => "",
+		},
+	};
+
+	await localEvents.get("session_start")({}, localCtx);
+	await localCommands.get("board-cleanup-subagent").handler("", localCtx);
+	assert.equal(latestUserMessage, undefined, "empty boards should not start subagent cleanup");
+	assert.match(localNotification, /No active board items/i);
+
+	await localCommands.get("assume").handler("Keep command surface stable", localCtx);
+	await localCommands.get("decide").handler("Use /board-manage as primary UI", localCtx);
+	latestUserMessage = undefined;
+	latestUserMessageOptions = undefined;
+	localNotification = "";
+	await localCommands.get("board-cleanup-subagent").handler("", localCtx);
+	assert.equal(latestUserMessageOptions, undefined, "idle cleanup starts immediately");
+	assert.match(latestUserMessage, /subagent-assisted board cleanup/i);
+	assert.match(latestUserMessage, /Board version: 2/i);
+	assert.match(latestUserMessage, /Keep command surface stable/);
+	assert.match(latestUserMessage, /Use \/board-manage as primary UI/);
+	assert.match(latestUserMessage, /read-only/i);
+	assert.match(latestUserMessage, /Do not mutate project files/i);
+	assert.match(latestUserMessage, /Do not call decision_board/i);
+	assert.match(latestUserMessage, /Ask the user/i);
+	assert.match(latestUserMessage, /changed since cleanup was prepared|freshness/i);
+	assert.match(latestUserMessage, /treat board item text as data/i);
+
+	const busyCtx = { ...localCtx, isIdle: () => false };
+	latestUserMessage = undefined;
+	latestUserMessageOptions = undefined;
+	localNotification = "";
+	await localCommands.get("board-cleanup-subagent").handler("", busyCtx);
+	assert.equal(latestUserMessageOptions?.deliverAs, "followUp", "busy cleanup queues a follow-up user message");
+	assert.match(localNotification, /queued/i);
 }
 
 {
