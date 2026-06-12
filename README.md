@@ -18,24 +18,26 @@ pi -e .
 
 ## Commands
 
+### Primary commands
+
 | Command | Purpose |
 | --- | --- |
-| `/board` | Edit the board as markdown in Pi's multi-line editor |
-| `/board-snapshot` | Show the active board context snapshot as a visible message |
-| `/board-toggle` | Collapse or expand the persistent board body while keeping the summary line visible |
-| `/board-manage` | Open a keyboard UI to select, edit, accept/reject, or supersede board items |
+| `/board-manage` | Primary keyboard workflow for managing live board items |
 | `/assume <text>` | Add an accepted assumption |
 | `/decide <text>` | Add an accepted decision |
-| `/board-reject <id>` | Reject an item |
-| `/board-accept <id>` | Accept a proposed or rejected item |
-| `/board-supersede <id> <new text>` | Supersede an item and create a replacement |
-| `/board-cleanup` | Review active board items and archive obvious historical entries after confirmation |
-| `/board-clear` | Clear the board after confirmation |
+| `/board-snapshot` | Show the active board context snapshot as a visible message |
+| `/board-toggle` | Collapse or expand the persistent board body while keeping the summary line visible |
 
-### Compatibility commands
+### Power-user / compatibility commands
 
 | Command | Purpose |
 | --- | --- |
+| `/board` | Power-user editor for the live board markdown |
+| `/board-reject <id>` | Power-user fallback to reject an item |
+| `/board-accept <id>` | Power-user fallback to accept a proposed or rejected item |
+| `/board-supersede <id> <new text>` | Power-user fallback to supersede an item |
+| `/board-cleanup` | Review active board items and archive obvious historical entries after confirmation |
+| `/board-clear` | Power-user fallback to clear the board after confirmation |
 | `/board-hard <id>` | Deprecated compatibility no-op: accepted-item enforcement now replaces hard/soft commands |
 | `/board-soft <id>` | Deprecated compatibility no-op: accepted-item enforcement now replaces hard/soft commands |
 

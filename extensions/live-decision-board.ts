@@ -1337,7 +1337,7 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 	});
 
 	pi.registerCommand("board-manage", {
-		description: "Manage live board items with a keyboard UI",
+		description: "Primary UI for live board item actions: edit, accept/reject, supersede, or clear",
 		handler: async (_args, ctx) => {
 			if (ctx.mode !== "tui") return ctx.ui.notify("/board-manage requires TUI mode", "error");
 			await manageBoard(ctx);
@@ -1385,21 +1385,21 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 	});
 
 	pi.registerCommand("board-reject", {
-		description: "Reject a board item: /board-reject A1",
+		description: "Power-user fallback: reject a board item by id; prefer /board-manage",
 		handler: async (args, ctx) => {
 			safeApplyBoard(ctx, "Rejected item", () => updateBoardItem(board, args.trim(), { status: "rejected" }));
 		},
 	});
 
 	pi.registerCommand("board-accept", {
-		description: "Accept a proposed or rejected board item: /board-accept A1",
+		description: "Power-user fallback: accept a board item by id; prefer /board-manage",
 		handler: async (args, ctx) => {
 			safeApplyBoard(ctx, "Accepted item", () => updateBoardItem(board, args.trim(), { status: "accepted" }));
 		},
 	});
 
 	pi.registerCommand("board-supersede", {
-		description: "Supersede a board item: /board-supersede A1 <new text>",
+		description: "Power-user fallback: supersede a board item by id; prefer /board-manage",
 		handler: async (args, ctx) => {
 			const [id, ...textParts] = args.trim().split(/\s+/);
 			const replacementText = textParts.join(" ");
@@ -1409,7 +1409,7 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 	});
 
 	pi.registerCommand("board-clear", {
-		description: "Clear the live board after confirmation",
+		description: "Power-user fallback: clear the live board after confirmation; prefer /board-manage",
 		handler: async (_args, ctx) => {
 			const baseEpoch = boardEpoch;
 			if (ctx.hasUI) {
@@ -1428,7 +1428,7 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 	});
 
 	pi.registerCommand("board", {
-		description: "Edit the live assumptions/decisions board as markdown",
+		description: "Power-user editor for the live board markdown",
 		handler: async (_args, ctx) => {
 			if (!ctx.hasUI) return ctx.ui.notify("/board requires UI mode", "error");
 			const baseBoard = board;

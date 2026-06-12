@@ -66,6 +66,12 @@ assert.match(commands.get("assume").description, /accepted assumption/i, "assume
 assert.doesNotMatch(commands.get("assume").description, /soft|hard/i, "assume command should not expose legacy strength wording");
 assert.match(commands.get("decide").description, /accepted decision/i, "decide command should use accepted-item wording");
 assert.doesNotMatch(commands.get("decide").description, /soft|hard/i, "decide command should not expose legacy strength wording");
+assert.match(commands.get("board-manage").description, /primary/i, "board-manage should be described as the primary item-action UI");
+assert.match(commands.get("board-reject").description, /power-user|compatibility/i, "board-reject should be documented as a fallback command");
+assert.match(commands.get("board-accept").description, /power-user|compatibility/i, "board-accept should be documented as a fallback command");
+assert.match(commands.get("board-supersede").description, /power-user|compatibility/i, "board-supersede should be documented as a fallback command");
+assert.match(commands.get("board-clear").description, /power-user|fallback/i, "board-clear should be documented as a fallback command");
+
 assert.match(commands.get("board-hard").description, /accepted items are enforced automatically/i, "board-hard help should say it is compatibility-only");
 assert.doesNotMatch(commands.get("board-hard").description, /accepted decisions|enforce board items/i, "board-hard help should not imply it performs enforcement or only covers decisions");
 assert.equal(registeredTool.name, "decision_board", "decision_board tool should be registered");
