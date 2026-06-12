@@ -22,7 +22,7 @@ pi -e .
 | --- | --- |
 | `/board` | Edit the board as markdown in Pi's multi-line editor |
 | `/board-snapshot` | Show the active board context snapshot as a visible message |
-| `/board-toggle` | Hide or show the persistent board widget without disabling board updates, context injection, or hard-decision enforcement |
+| `/board-toggle` | Collapse or expand the persistent board body while keeping the summary line visible |
 | `/board-manage` | Open a keyboard UI to select, edit, accept/reject, harden/soften, or supersede board items |
 | `/assume <text>` | Add an accepted soft assumption |
 | `/decide <text>` | Add an accepted soft decision |
@@ -49,7 +49,7 @@ Prompt guidance tells the model to record meaningful assumptions and implementat
 ## How it works
 
 - Board state is persisted in Pi session custom entries and restored from the active branch.
-- A compact widget shows the active board; footer status is intentionally suppressed to avoid duplicate board summaries.
+- The widget shows all active board items by default; `/board-toggle` collapses the body while keeping the summary line visible. Footer status is intentionally suppressed to avoid duplicate board summaries.
 - `/board-snapshot` records the active context view (accepted/proposed items plus board rules) as a visible message.
 - `/board-manage` is a TUI-only keyboard manager: `↑↓/j/k` select, `enter/e` edit, `a` accept, `r` reject/remove from the active board, `h` hard, `s` soft, `u` supersede, `q/esc` close.
 - The `context` hook removes stale board-generated context and injects exactly one fresh board snapshot into provider requests.

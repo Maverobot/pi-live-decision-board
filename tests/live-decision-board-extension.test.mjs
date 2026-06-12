@@ -111,11 +111,13 @@ assert.equal(latestStatus, undefined, "board summary should not be duplicated in
 assert.match(latestMessage.content, /Build as a Pi extension first/);
 const entriesBeforeToggle = entries.length;
 await commands.get("board-toggle").handler("", ctx);
-assert.equal(latestWidget, undefined, "board-toggle hides the persistent widget");
+const collapsedWidgetText = renderLatestWidgetText();
+assert.match(collapsedWidgetText, /Board/, "board-toggle keeps the board summary visible when collapsed");
+assert.doesNotMatch(collapsedWidgetText, /Decisions \(/, "board-toggle hides the board body when collapsed");
 assert.equal(entries.length, entriesBeforeToggle, "board-toggle does not persist board state changes");
 await commands.get("board-toggle").handler("", ctx);
-assert.match(renderLatestWidgetText(), /Live Decision Board/, "board-toggle shows the persistent widget again");
-assert.equal(entries.length, entriesBeforeToggle, "showing the widget also does not persist board state changes");
+assert.match(renderLatestWidgetText(), /Decisions.*\(1\)/, "board-toggle expands the persistent widget body again");
+assert.equal(entries.length, entriesBeforeToggle, "expanding the widget also does not persist board state changes");
 const initialBoard = entries.at(-1).data;
 
 await commands.get("board-reject").handler("A1", ctx);

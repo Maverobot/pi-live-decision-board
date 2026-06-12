@@ -237,7 +237,8 @@ function formatBoardStatusForWidget(board: BoardState, theme: Theme): string {
 	].join(" • ");
 }
 
-function formatBoardWidgetText(board: BoardState, theme: Theme): string {
+function formatBoardWidgetText(board: BoardState, theme: Theme, options: { collapsed?: boolean } = {}): string {
+	if (options.collapsed) return formatBoardStatusForWidget(board, theme);
 	const [, ...bodyLines] = formatBoardWidget(board);
 	return [renderBoardSeparator(theme), formatBoardStatusForWidget(board, theme), ...bodyLines.map((line) => colorizeWidgetLine(line, theme))].join("\n");
 }
@@ -257,7 +258,7 @@ function colorizeWidgetLine(line: string, theme: Theme): string {
 }
 
 export function formatBoardWidget(board: BoardState, options: { maxItems?: number } = {}): string[] {
-	const maxItems = options.maxItems ?? 8;
+	const maxItems = options.maxItems ?? Number.POSITIVE_INFINITY;
 	const active = activeBoardItems(board).sort(compareWidgetItems);
 	const decisions = active.filter((item) => item.kind === "decision");
 	const assumptions = active.filter((item) => item.kind === "assumption");
@@ -795,7 +796,7 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 	let board = createEmptyBoard();
 	let lastInjectedBoardVersion = 0;
 	let boardEpoch = 0;
-	let widgetVisible = true;
+	let widgetExpanded = true;
 
 	function persist(): void {
 		pi.appendEntry(CUSTOM_TYPE, board);
@@ -803,11 +804,11 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 
 	function updateUi(ctx: ExtensionContext): void {
 		ctx.ui.setStatus("decision-board", undefined);
-		if (board.items.length === 0 || !widgetVisible) {
+		if (board.items.length === 0) {
 			ctx.ui.setWidget("decision-board", undefined);
 			return;
 		}
-		ctx.ui.setWidget("decision-board", (_tui, theme) => new Text(formatBoardWidgetText(board, theme), 0, 0));
+		ctx.ui.setWidget("decision-board", (_tui, theme) => new Text(formatBoardWidgetText(board, theme, { collapsed: !widgetExpanded }), 0, 0));
 	}
 
 	function notifyBoardChanged(previousVersion: number, ctx: ExtensionContext, source: BoardSource): void {
@@ -978,14 +979,14 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 	});
 
 	pi.registerCommand("board-toggle", {
-		description: "Hide or show the persistent live assumptions/decisions board widget",
+		description: "Collapse or expand the persistent live assumptions/decisions board widget body",
 		handler: async (_args, ctx) => {
-			widgetVisible = !widgetVisible;
+			widgetExpanded = !widgetExpanded;
 			updateUi(ctx);
 			ctx.ui.notify(
-				widgetVisible
-					? "Live Decision Board widget shown"
-					: "Live Decision Board widget hidden; board still updates, injects into context, and enforces hard decisions. Use /board-toggle to show it or /board-snapshot to inspect it.",
+				widgetExpanded
+					? "Live Decision Board widget expanded"
+					: "Live Decision Board widget collapsed; summary remains visible, and the board still updates, injects into context, and enforces hard decisions.",
 				"info",
 			);
 		},

@@ -95,10 +95,11 @@ for (let index = 1; index <= 9; index += 1) {
 	overflowBoard = mod.addBoardItem(overflowBoard, { kind: "decision", text: `Decision ${index}` });
 }
 overflowBoard = mod.addBoardItem(overflowBoard, { kind: "assumption", text: "Assumption visible in counts" });
-const overflowWidget = mod.formatBoardWidget(overflowBoard, { maxItems: 8 });
-assert(overflowWidget.includes("… 1 more decision"), "widget shows an overflow cue for truncated decisions");
-assert(overflowWidget.includes("Assumptions (1)"), "widget still renders a non-empty section heading when item slots are exhausted");
-assert(overflowWidget.includes("… 1 assumption hidden"), "widget shows when a whole non-empty section is hidden by the item budget");
+const overflowWidget = mod.formatBoardWidget(overflowBoard);
+assert(overflowWidget.includes("• [D9] Decision 9"), "visible widget shows every active decision by default");
+assert(overflowWidget.includes("Assumptions (1)"), "visible widget shows non-empty assumption sections after many decisions");
+assert(overflowWidget.includes("• [A1] Assumption visible in counts"), "visible widget shows every active assumption by default");
+assert(!overflowWidget.some((line) => line.startsWith("…")), "visible widget does not hide items behind overflow cues by default");
 
 const rejected = mod.updateBoardItem(withDecision, "A1", { status: "rejected" });
 assert.equal(rejected.version, 3, "updating item increments version");

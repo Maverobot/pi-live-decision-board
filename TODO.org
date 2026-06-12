@@ -10,6 +10,7 @@
    Board v6 • 2 assumptions • 4 decisions • 0 hard constraints
  #+end_src
 
-- [x] Add `/board-toggle` to hide/show the persistent widget without changing board state.
+- [x] Add `/board-toggle` to collapse/expand the persistent widget body without changing board state.
 - [x] Rename `/board-show` to `/board-snapshot` so message snapshots are explicit.
 - [x] Add `/board-manage` keyboard UI for selecting and updating board items.
+- [x] Show all active board items in the visible widget and make `/board-toggle` collapse to the summary line.
