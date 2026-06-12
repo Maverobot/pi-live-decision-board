@@ -268,6 +268,71 @@ function looksHistorical(text: string): boolean {
 	return /\b(apply round \d+|review fixes|implemented|after the next review round|rename[sd]? \/|add \/board-|fix(?:ed)? .*review|completed|pushed|installed cache)\b/i.test(text);
 }
 
+export interface CleanupImpact {
+	activeBefore: number;
+	activeAfter: number;
+	hardBefore: number;
+	hardAfter: number;
+	archiveCount: number;
+	supersedeCount: number;
+	needsUserReviewCount: number;
+}
+
+export function summarizeBoardCleanupImpact(board: BoardState, recommendations: CleanupRecommendation[]): CleanupImpact {
+	const activeBefore = activeBoardItems(board).length;
+	const hardBefore = activeBoardItems(board).filter((item) => item.status === "accepted" && item.strength === "hard").length;
+	const nextBoard = applyBoardCleanup(board, recommendations);
+	return {
+		activeBefore,
+		activeAfter: activeBoardItems(nextBoard).length,
+		hardBefore,
+		hardAfter: activeBoardItems(nextBoard).filter((item) => item.status === "accepted" && item.strength === "hard").length,
+		archiveCount: recommendations.filter((rec) => rec.selected && rec.action === "archive").length,
+		supersedeCount: recommendations.filter((rec) => rec.selected && rec.action === "supersede").length,
+		needsUserReviewCount: recommendations.filter((rec) => rec.selected && rec.action === "needs_user_review").length,
+	};
+}
+
+export function applyBoardCleanup(board: BoardState, recommendations: CleanupRecommendation[]): BoardState {
+	let next = board;
+	for (const recommendation of recommendations) {
+		if (!recommendation.selected) continue;
+		const current = next.items.find((item) => item.id === recommendation.id);
+		if (!current) {
+			throw new Error(`Board cleanup item not found: ${recommendation.id}`);
+		}
+		assertCleanupRecommendationFresh(current, recommendation);
+		switch (recommendation.action) {
+			case "archive":
+				next = updateBoardItem(next, recommendation.id, { status: "rejected" });
+				break;
+			case "supersede":
+				if (!recommendation.replacementText?.trim()) {
+					throw new Error(`Cleanup supersede requires replacement text for ${recommendation.id}`);
+				}
+				next = supersedeBoardItem(next, recommendation.id, recommendation.replacementText, "user");
+				break;
+			case "keep":
+			case "needs_user_review":
+				break;
+			default:
+				break;
+		}
+	}
+	return next;
+}
+
+function assertCleanupRecommendationFresh(item: BoardItem, recommendation: CleanupRecommendation): void {
+	if (
+		item.version !== recommendation.itemVersion ||
+		item.text !== recommendation.observedText ||
+		item.status !== recommendation.observedStatus ||
+		item.strength !== recommendation.observedStrength
+	) {
+		throw new Error(`Board item ${recommendation.id} changed since cleanup was prepared`);
+	}
+}
+
 export function formatBoardForPrompt(board: BoardState): string {
 	const active = activeBoardItems(board);
 	const assumptions = active.filter((item) => item.kind === "assumption");

@@ -149,6 +149,35 @@ assert.equal(cleanupD3.action, "keep", "ambiguous current items default keep");
 const inactiveCleanupBoard = mod.updateBoardItem(cleanupBoard, "D1", { status: "rejected" });
 assert(!mod.recommendBoardCleanup(inactiveCleanupBoard).some((rec) => rec.id === "D1"), "inactive items are not recommended");
 
+const archivePlan = cleanupRecommendations.map((rec) =>
+	rec.id === "D1" ? { ...rec, selected: true } : { ...rec, selected: false },
+);
+const cleanupImpact = mod.summarizeBoardCleanupImpact(cleanupBoard, archivePlan);
+assert.equal(cleanupImpact.activeBefore, 4);
+assert.equal(cleanupImpact.activeAfter, 3);
+assert.equal(cleanupImpact.hardBefore, 1);
+assert.equal(cleanupImpact.hardAfter, 1);
+assert.equal(cleanupImpact.archiveCount, 1);
+
+const cleanedBoard = mod.applyBoardCleanup(cleanupBoard, archivePlan);
+assert.equal(cleanedBoard.items.find((item) => item.id === "D1").status, "rejected", "archive maps to inactive retained status");
+assert.equal(cleanedBoard.items.find((item) => item.id === "D2").strength, "hard", "cleanup preserves hard item strength");
+assert.equal(mod.formatBoardForPrompt(cleanedBoard).includes("Apply Round 5"), false, "archived item leaves active prompt context");
+
+const noOpCleanup = mod.applyBoardCleanup(cleanupBoard, cleanupRecommendations.map((rec) => ({ ...rec, selected: false })));
+assert.equal(noOpCleanup, cleanupBoard, "cleanup with no selected actions is a no-op");
+
+const keepNeedsPlan = cleanupRecommendations.map((rec) =>
+	rec.action === "keep" || rec.action === "needs_user_review" ? { ...rec, selected: true } : { ...rec, selected: false },
+);
+const keepNeedsCleanup = mod.applyBoardCleanup(cleanupBoard, keepNeedsPlan);
+assert.equal(keepNeedsCleanup, cleanupBoard, "keep and needs_user_review selections are no-ops");
+
+const stalePlan = archivePlan.map((rec) =>
+	rec.id === "D1" ? { ...rec, observedText: "old text" } : rec,
+);
+assert.throws(() => mod.applyBoardCleanup(cleanupBoard, stalePlan), /changed since cleanup was prepared/);
+
 const rejected = mod.updateBoardItem(withDecision, "A1", { status: "rejected" });
 assert.equal(rejected.version, 3, "updating item increments version");
 assert.equal(rejected.items[0].status, "rejected");
