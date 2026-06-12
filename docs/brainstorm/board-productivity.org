@@ -435,6 +435,14 @@ Supported actions should be intentionally small at first:
 - supersede
 - needs_user_review
 
+Risk levels estimate the chance that a recommendation would remove or rewrite still-useful current context:
+
+- low: obvious historical clutter or safe no-op recommendation
+- medium: needs human judgment; a principle may remain but wording/action may need change
+- high: likely current-context impact, accepted constraints, or ambiguous user intent
+
+Confidence is separate from risk: confidence records evidence strength for the recommendation; risk records potential harm if the recommendation is wrong.
+
 Defer merge, compatibility strength edits, and delete to later workflows.
 
 * Proactive hygiene policy

@@ -631,6 +631,7 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 	assert.match(cleanupRendered[0], /space toggle/);
 	const cleanupInitialTop = cleanupRendered[0].split("\n").slice(0, 4).join("\n");
 	assert.match(cleanupInitialTop, /space toggle/, "cleanup keybinding help should be visible before long recommendation lists can push lower content out of the overlay");
+	assert.match(cleanupInitialTop, /risk: low=safe cleanup/i, "cleanup UI should define risk levels before long recommendation lists can push lower content out of the overlay");
 	assert(cleanupRendered[0].indexOf("[D3]") < cleanupRendered[0].indexOf("[D10]"), "cleanup preserves numeric board order within action groups");
 	assert.notEqual(cleanupRendered[1], cleanupRendered[0], "j changes selection");
 	assert.notEqual(cleanupRendered[3], cleanupRendered[2], "space toggles selected action");

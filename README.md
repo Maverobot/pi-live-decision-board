@@ -114,6 +114,14 @@ Bad active board items:
 
 Use `/board-cleanup` to review active items and archive obvious historical entries. Archive removes an item from active context while retaining it in board history.
 
+Cleanup risk levels estimate the chance that applying a recommendation would remove or rewrite still-useful current context:
+
+- `low`: obvious historical clutter or a safe no-op recommendation.
+- `medium`: needs human judgment, usually because a useful principle may remain but wording/action might change.
+- `high`: likely to affect current context, accepted constraints, or ambiguous user intent.
+
+Imported recommendations may also include confidence. Confidence is evidence strength (`low`/`medium`/`high`) for the recommendation itself; risk is the potential harm if the recommendation is wrong.
+
 ## Subagent-assisted cleanup
 
 `/board-cleanup-subagent` does not mutate the board directly and does not launch subagents from the extension itself. Instead, it snapshots the current active board and sends a structured cleanup request to the current Pi agent as a displayed custom handoff message.

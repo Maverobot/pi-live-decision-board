@@ -1293,10 +1293,12 @@ class BoardCleanupComponent {
 	render(width: number): string[] {
 		if (this.cachedLines && this.cachedWidth === width) return this.cachedLines;
 		const helpLine = truncateToWidth(this.theme.fg("dim", "↑↓/j/k select • space toggle • enter apply selected • q/esc cancel"), width);
+		const riskLegend = truncateToWidth(this.theme.fg("dim", "risk: low=safe cleanup • medium=needs judgment • high=likely current context"), width);
 		const lines = [
 			this.header(width),
 			truncateToWidth(this.summaryLine(), width),
 			helpLine,
+			riskLegend,
 			"",
 		];
 

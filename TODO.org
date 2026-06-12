@@ -19,4 +19,37 @@
 
 - [x] Add `/board-cleanup` MVP for user-confirmed board hygiene.
 
-- [ ] Why do we need "v18" in "Board • v18 • 4 assumptions • 11 decisions • 0 hard constraints"?
+- [X] Why do we need "v18" in "Board • v18 • 4 assumptions • 11 decisions • 0 hard constraints"?
+
+- [X] Async agents can be blended with our board. Can we separate them with a separation line but don't add the line if the board is right above the prompt line because there is already a separation line there. I don't want to change the async agents extension due to this.
+
+#+begin_src sh
+  ──────────────── Live Decision Board ────────────────
+  Board • v7 • 4 assumptions • 3 decisions • 3 hard constraints
+  Decisions (3)
+  ! [D1] Design the scan-event usability/quality API as a separate stateless endpoint rather than extending or replacing the pure workspace-frame solver endpoint.
+  ! [D2] Revise the usability API proposal as a stateless calculator v1: caller supplies uncertainty and policy inputs, response uses status usable/not_usable, and results are advisory/not authoritative for commit
+  or apply.
+  ! [D3] Represent usability area of interest with named workspace-frame evaluation points; compute and report worst-case metrics across those points rather than using only a scalar evaluation radius.
+  Assumptions (4)
+  • [A1] Interpret the user's "plane norminal" wording as plane-normal/nominal workspace-plane angular uncertainty, represented as a 1σ angular error in radians.
+  • [A2] Design the usability check as stateless like the current solver: the request repeats the four scan events and supplies uncertainty/policy inputs rather than referring to stored pose-evaluation records.
+  • [A3] Treat event scan error input as a conservative 1σ position uncertainty of the already-latched/averaged event sensor-origin positions, not raw trial samples.
+  • [A4] Area-of-interest support should let callers evaluate error where production work matters, such as pick/place relevant points, rather than only at a generic far-corner radius.
+   ⠧ Async agents · background
+   ├─ ⠴ parallel · 1 agent running · 2/3 done · 92 tool uses · 382k token · 5m28s
+   │     ⎿  active but long-running · last activity now ago · 17 turns · 92 tools
+   │     ├ ✓ Agent 1/3: reviewer · complete (gpt-5.5 · thinking xhigh) · active but long-running · last activity 44s ago · 16 turns · 27 tools · 73k token
+   │     ├ ⠦ Agent 2/3: reviewer · running (gpt-5.5 · thinking xhigh) · active but long-running · last activity now ago · 6 turns · 25 tools · 122k token
+   │     └ ✓ Agent 3/3: reviewer · complete (gpt-5.5 · thinking xhigh) · active but long-running · last activity 1m ago · 17 turns · 40 tools · 187k token
+   └─ ⠹ reviewer · step 1/1 · 14 tool uses · 113k token · 2m25s
+         ⎿  active now · 7 turns · 14 tool
+#+end_src
+
+
+- [X] Not sure if "hard" brings much. Does it make sense to treat all items "hard"? I don't like to have "soft", which may or may not be considered. Don't just remove it. Let's talk about this design choice.
+- [X] "──────────────── Live Decision Board ────────────────" can be removed. Use indentation for the content of the board, e.g. Decisions are indented.
+- [X] What is difference between edit and supersede?
+- [X] Why do we need decisions in the board? Maybe we just need "Goals, Assumptions"? Decisions are getting more and more, so hard to manage.
+- [X] One subagent for the board cleanup is enough, don't need multiple subagents.
+- [X] What does low, medium etc mean in the board cleanup?
