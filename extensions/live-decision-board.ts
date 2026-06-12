@@ -996,11 +996,10 @@ class BoardCleanupComponent {
 
 	render(width: number): string[] {
 		if (this.cachedLines && this.cachedWidth === width) return this.cachedLines;
-		const selectedCount = this.recommendations.filter((rec) => rec.selected).length;
 		const helpLine = truncateToWidth(this.theme.fg("dim", "↑↓/j/k select • space toggle • enter apply selected • q/esc cancel"), width);
 		const lines = [
 			this.header(width),
-			truncateToWidth(`${this.recommendations.length} recommendations • ${selectedCount} selected`, width),
+			truncateToWidth(this.summaryLine(), width),
 			helpLine,
 			"",
 		];
@@ -1029,6 +1028,16 @@ class BoardCleanupComponent {
 	private header(width: number): string {
 		const title = ` ${this.theme.fg("accent", "Board Cleanup")} `;
 		return truncateToWidth(`${this.theme.fg("dim", "────")} ${title}${this.theme.fg("dim", "────")}`, width);
+	}
+
+	private summaryLine(): string {
+		const archiveCount = this.recommendations.filter((rec) => rec.selected && rec.action === "archive").length;
+		const supersedeCount = this.recommendations.filter((rec) => rec.selected && rec.action === "supersede").length;
+		const selectedParts = [
+			...(archiveCount > 0 ? [`${pluralize(archiveCount, "archive suggestion")} selected`] : []),
+			...(supersedeCount > 0 ? [`${pluralize(supersedeCount, "supersede suggestion")} selected`] : []),
+		];
+		return `${pluralize(this.recommendations.length, "board item")} to review • ${selectedParts.length ? selectedParts.join(" • ") : "no cleanup changes selected"}`;
 	}
 
 	private moveSelection(delta: number): void {

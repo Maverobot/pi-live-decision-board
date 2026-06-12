@@ -387,6 +387,9 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 	}
 	await cleanupCommands.get("board-cleanup").handler("", cleanupCtx);
 	assert.match(cleanupRendered[0], /Board Cleanup/);
+	assert.match(cleanupRendered[0], /10 board items to review/);
+	assert.match(cleanupRendered[0], /9 archive suggestions selected/);
+	assert.doesNotMatch(cleanupRendered[0], /10 recommendations • 9 selected/);
 	assert.match(cleanupRendered[0], /Archive from active board/);
 	assert.match(cleanupRendered[0], /Apply Round 5/);
 	assert.match(cleanupRendered[0], /accepted\/soft/);
