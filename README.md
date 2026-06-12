@@ -37,7 +37,7 @@ pi -e .
 | `/board-reject <id>` | Power-user fallback to reject an item by id; prefer `/board-manage` |
 | `/board-accept <id>` | Power-user fallback to accept a proposed or rejected item by id; prefer `/board-manage` |
 | `/board-supersede <id> <new text>` | Power-user fallback to supersede an item by id; prefer `/board-manage` |
-| `/board-clear` | Power-user fallback to clear the board after confirmation; prefer `/board-manage` once manager clear is available |
+| `/board-clear` | Power-user fallback to clear the board after confirmation |
 | `/board-hard <id>` | Deprecated compatibility no-op: accepted-item enforcement now replaces hard/soft commands |
 | `/board-soft <id>` | Deprecated compatibility no-op: accepted-item enforcement now replaces hard/soft commands |
 

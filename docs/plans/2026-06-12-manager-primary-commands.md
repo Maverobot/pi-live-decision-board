@@ -123,7 +123,7 @@ Restructure `README.md` command documentation into:
 | `/board-reject <id>` | Power-user fallback for rejecting an item by id; prefer `/board-manage` |
 | `/board-accept <id>` | Power-user fallback for accepting an item by id; prefer `/board-manage` |
 | `/board-supersede <id> <new text>` | Power-user fallback for superseding an item by id; prefer `/board-manage` |
-| `/board-clear` | Power-user fallback for clearing the board after confirmation; prefer `/board-manage` after Task 2 adds manager clear |
+| `/board-clear` | Power-user fallback for clearing the board after confirmation |
 | `/board-hard <id>` | Deprecated compatibility no-op: accepted-item enforcement now replaces hard/soft commands |
 | `/board-soft <id>` | Deprecated compatibility no-op: accepted-item enforcement now replaces hard/soft commands |
 ```
