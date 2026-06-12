@@ -1163,7 +1163,11 @@ class BoardManagerComponent {
 			}
 		}
 
-		lines.push("", truncateToWidth(this.theme.fg("dim", "↑↓/j/k select • enter/e edit • a accept • r reject/remove • u supersede • c clear • q/esc close"), width));
+		lines.push(
+			"",
+			truncateToWidth(this.theme.fg("dim", "↑↓/j/k select • enter/e edit • a accept • r reject/remove • u supersede • c clear • q/esc close"), width),
+			truncateToWidth(this.theme.fg("dim", "edit rewrites item text • supersede creates a linked replacement"), width),
+		);
 		this.cachedWidth = width;
 		this.cachedLines = lines;
 		return lines;

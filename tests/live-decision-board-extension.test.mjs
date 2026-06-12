@@ -1555,6 +1555,8 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 	assert.match(rendered[0], /Live Decision Board Manager/, "board-manage should render a titled keyboard UI");
 	assert.match(rendered[0], /> \[D1\]/, "manager initially selects the first sorted decision");
 	assert.match(rendered[0], /e edit/, "manager renders keyboard help");
+	assert.match(rendered[0], /edit rewrites item text/i, "manager help should explain edit semantics");
+	assert.match(rendered[0], /supersede creates a linked replacement/i, "manager help should explain supersede semantics");
 	assert.match(rendered[0], /c clear/, "manager help should expose clear action");
 	assert.doesNotMatch(rendered[0], /\bh hard\b/, "manager help should not show harden action");
 	assert.doesNotMatch(rendered[0], /\bs soft\b/, "manager help should not show soften action");
