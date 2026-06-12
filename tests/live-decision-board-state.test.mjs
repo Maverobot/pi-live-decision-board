@@ -308,7 +308,7 @@ const restoredLowBarrier = mod.restoreBoardFromEntries([
 		data: { ...withDecision, hardDecisionBarrierVersion: 0 },
 	},
 ]);
-assert.equal(restoredLowBarrier.hardDecisionBarrierVersion, 2, "restored barrier is at least the hard item version");
+assert.equal(restoredLowBarrier.hardDecisionBarrierVersion, 2, "restored barrier is at least the enforced item version");
 assert.equal(mod.hasUninjectedEnforcedChanges(restoredLowBarrier, 0), true, "low restored barriers cannot bypass enforced items");
 const restoredHighBarrier = mod.restoreBoardFromEntries([
 	{
@@ -327,14 +327,14 @@ const futureItemVersionRestored = mod.restoreBoardFromEntries([
 	},
 ]);
 assert.deepEqual(futureItemVersionRestored, mod.createEmptyBoard(), "item versions newer than the board are rejected");
-const zeroVersionHardRestored = mod.restoreBoardFromEntries([
+const zeroVersionAcceptedRestored = mod.restoreBoardFromEntries([
 	{
 		type: "custom",
 		customType: "live-decision-board",
 		data: { ...withDecision, version: 0, hardDecisionBarrierVersion: 0, items: [{ ...withDecision.items[1], version: 0 }] },
 	},
 ]);
-assert.deepEqual(zeroVersionHardRestored, mod.createEmptyBoard(), "zero-version restored accepted items are rejected");
+assert.deepEqual(zeroVersionAcceptedRestored, mod.createEmptyBoard(), "zero-version restored accepted items are rejected");
 
 const legacyMarkdown = "# Live Decision Board\n\n- D1 | decision | accepted | hard | Legacy hard item\n";
 const parsedLegacy = mod.parseBoardMarkdown(legacyMarkdown, mod.createEmptyBoard());

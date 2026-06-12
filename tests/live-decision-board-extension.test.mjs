@@ -145,7 +145,7 @@ await commands.get("board-reject").handler("A1", ctx);
 assert.equal(entries.at(-1).data.items.find((item) => item.id === "A1").status, "rejected");
 await commands.get("board-accept").handler("A1", ctx);
 assert.equal(entries.at(-1).data.items.find((item) => item.id === "A1").status, "accepted");
-const lowHardBoard = entries.at(-1).data;
+const acceptedBoardForRestore = entries.at(-1).data;
 const beforeNoOp = entries.length;
 latestNotificationMessage = "";
 await commands.get("board-hard").handler("D1", ctx);
@@ -251,11 +251,11 @@ const allowed = await events.get("tool_call")({ toolName: "read", input: { path:
 assert.equal(allowed, undefined, "read-only tools are not blocked");
 
 branchEntries = [
-	{ type: "custom", customType: "live-decision-board", data: lowHardBoard },
+	{ type: "custom", customType: "live-decision-board", data: acceptedBoardForRestore },
 	{
 		type: "custom",
 		customType: "live-decision-board",
-		data: { version: lowHardBoard.version + 1, nextAssumptionId: 2, nextDecisionId: 3, items: [null] },
+		data: { version: acceptedBoardForRestore.version + 1, nextAssumptionId: 2, nextDecisionId: 3, items: [null] },
 	},
 ];
 await events.get("session_tree")({}, ctx);
@@ -1043,7 +1043,7 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 	});
 
 	await localEvents.get("session_start")({}, localCtx);
-	await localCommands.get("decide").handler("Already soft decision", localCtx);
+	await localCommands.get("decide").handler("Already accepted decision", localCtx);
 	const entriesBeforeNoOpManager = localEntries.length;
 	await localCommands.get("board-manage").handler("", localCtx);
 	assert.equal(localEntries.length, entriesBeforeNoOpManager, "manager no-op actions should not persist duplicate board entries");
