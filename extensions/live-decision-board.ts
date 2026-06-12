@@ -99,10 +99,6 @@ function maxEnforcedItemVersion(items: BoardItem[]): number {
 	return items.reduce((maxVersion, item) => (isEnforcedItem(item) ? Math.max(maxVersion, item.version) : maxVersion), 0);
 }
 
-function maxAcceptedHardItemVersion(items: BoardItem[]): number {
-	return maxEnforcedItemVersion(items);
-}
-
 export function addBoardItem(board: BoardState, input: NewBoardItem): BoardState {
 	const text = normalizeBoardText(input.text);
 	if (!text) throw new Error("Board item text is required");
@@ -453,8 +449,12 @@ function appendWidgetSection(lines: string[], label: string, items: BoardItem[],
 	return remainingItems - visibleItems.length;
 }
 
-export function hasUninjectedHardChanges(board: BoardState, injectedVersion: number): boolean {
+export function hasUninjectedEnforcedChanges(board: BoardState, injectedVersion: number): boolean {
 	return getHardDecisionBarrierVersion(board) > injectedVersion;
+}
+
+export function hasUninjectedHardChanges(board: BoardState, injectedVersion: number): boolean {
+	return hasUninjectedEnforcedChanges(board, injectedVersion);
 }
 
 export function restoreBoardFromEntries(entries: SessionEntryLike[]): BoardState {
@@ -587,7 +587,7 @@ export function parseBoardMarkdown(markdown: string, previousBoard: BoardState):
 
 	return {
 		version: nextVersion,
-		hardDecisionBarrierVersion: hardDecisionBoundaryChanged(previousBoard.items, items)
+		hardDecisionBarrierVersion: hasEnforcedBoundaryChanged(previousBoard.items, items)
 			? nextVersion
 			: getHardDecisionBarrierVersion(previousBoard),
 		nextAssumptionId: maxAssumptionId + 1,
@@ -651,7 +651,7 @@ function parseMarkdownItem(input: {
 	};
 }
 
-function hardDecisionBoundaryChanged(previousItems: BoardItem[], nextItems: BoardItem[]): boolean {
+function hasEnforcedBoundaryChanged(previousItems: BoardItem[], nextItems: BoardItem[]): boolean {
 	const nextById = new Map(nextItems.map((item) => [item.id, item]));
 	const previousById = new Map(previousItems.map((item) => [item.id, item]));
 
@@ -1515,7 +1515,7 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 
 	pi.on("context", async (event) => {
 		const filtered = event.messages.filter((message) => !BOARD_CONTEXT_TYPES.has(getCustomType(message)));
-		if (board.items.length === 0 && !hasUninjectedHardChanges(board, lastInjectedBoardVersion)) {
+		if (board.items.length === 0 && !hasUninjectedEnforcedChanges(board, lastInjectedBoardVersion)) {
 			return { messages: filtered };
 		}
 		lastInjectedBoardVersion = board.version;
@@ -1529,7 +1529,7 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 
 	pi.on("tool_call", async (event) => {
 		if (!isMutatingToolCall(event.toolName, event.input as Record<string, unknown>)) return;
-		if (!hasUninjectedHardChanges(board, lastInjectedBoardVersion)) return;
+		if (!hasUninjectedEnforcedChanges(board, lastInjectedBoardVersion)) return;
 		return {
 			block: true,
 			reason: `Live Decision Board changed after the agent last received it in provider context. Current board v${board.version}, injected v${lastInjectedBoardVersion}. Re-read/reconcile the board before mutating files.`,

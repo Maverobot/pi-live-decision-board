@@ -245,7 +245,7 @@ assert.equal(blocked.block, true);
 assert.match(blocked.reason, /Live Decision Board changed/);
 
 const blockedRedirect = await events.get("tool_call")({ toolName: "bash", input: { command: "echo hi > file.txt" } }, ctx);
-assert.equal(blockedRedirect.block, true, "stale hard changes block shell redirection");
+assert.equal(blockedRedirect.block, true, "stale enforced changes block shell redirection");
 
 const allowed = await events.get("tool_call")({ toolName: "read", input: { path: "README.md" } }, ctx);
 assert.equal(allowed, undefined, "read-only tools are not blocked");
@@ -272,10 +272,10 @@ const clearContextResult = await events.get("context")(
 assert.equal(
 	clearContextResult.messages[0].customType,
 	"live-decision-board-context",
-	"cleared hard-decision boards still inject once to satisfy the stale barrier",
+	"cleared enforced-item boards still inject once to satisfy the stale barrier",
 );
 const allowedAfterClearInjection = await events.get("tool_call")({ toolName: "write", input: { path: "x", content: "y" } }, ctx);
-assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board releases the stale hard-decision guard");
+assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board releases the stale enforced-item guard");
 
 {
 	let nonTuiNotification = "";
@@ -780,7 +780,7 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 	const editPromise = localCommands.get("board").handler("", localCtx);
 	await localTool.execute(
 		"local-tool-1",
-		{ action: "add", kind: "decision", text: "Concurrent hard decision", status: "accepted", strength: "hard" },
+		{ action: "add", kind: "decision", text: "Concurrent accepted decision", status: "accepted", strength: "hard" },
 		undefined,
 		undefined,
 		localCtx,
@@ -789,7 +789,7 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 	resolveEditor(editorInitial.replace("Initial assumption", "Stale editor rewrite"));
 	await editPromise;
 	assert.equal(localEntries.length, entriesBeforeStaleEditorSave, "stale /board editor saves should not append board entries");
-	assert(localEntries.at(-1).data.items.some((item) => item.text === "Concurrent hard decision"), "stale /board editor saves must not drop concurrent board updates");
+	assert(localEntries.at(-1).data.items.some((item) => item.text === "Concurrent accepted decision"), "stale /board editor saves must not drop concurrent board updates");
 	assert.match(latestNotification, /changed while editor was open/, "stale /board editor saves should notify the user to reopen");
 }
 
@@ -804,7 +804,7 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 	const editorResult = new Promise((resolve) => {
 		resolveEditor = resolve;
 	});
-	const sameVersionHardBoard = {
+	const sameVersionAcceptedBoard = {
 		version: 1,
 		hardDecisionBarrierVersion: 1,
 		nextAssumptionId: 1,
@@ -813,7 +813,7 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 			{
 				id: "D1",
 				kind: "decision",
-				text: "Same-version hard decision",
+				text: "Same-version accepted decision",
 				status: "accepted",
 				strength: "hard",
 				source: "user",
@@ -859,7 +859,7 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 	await localEvents.get("session_start")({}, localCtx);
 	await localCommands.get("assume").handler("Initial assumption", localCtx);
 	const editPromise = localCommands.get("board").handler("", localCtx);
-	localBranchEntries = [{ type: "custom", customType: "live-decision-board", data: sameVersionHardBoard }];
+	localBranchEntries = [{ type: "custom", customType: "live-decision-board", data: sameVersionAcceptedBoard }];
 	await localEvents.get("session_tree")({}, localCtx);
 	const entriesBeforeStaleEditorSave = localEntries.length;
 	resolveEditor(editorInitial.replace("Initial assumption", "Same-version stale editor rewrite"));
@@ -867,7 +867,7 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 	assert.equal(localEntries.length, entriesBeforeStaleEditorSave, "same-version branch changes should make open /board editor saves stale");
 	assert.match(latestNotification, /changed while editor was open/, "same-version stale /board editor saves should notify the user to reopen");
 	const blockedAfterSameVersionRestore = await localEvents.get("tool_call")({ toolName: "write", input: { path: "x", content: "y" } }, localCtx);
-	assert.equal(blockedAfterSameVersionRestore.block, true, "same-version stale /board editor saves must not drop the restored hard decision barrier");
+	assert.equal(blockedAfterSameVersionRestore.block, true, "same-version stale /board editor saves must not drop the restored enforced barrier");
 }
 
 {
@@ -880,7 +880,7 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 	const confirmResult = new Promise((resolve) => {
 		resolveConfirm = resolve;
 	});
-	const sameVersionSoftBoard = {
+	const sameVersionAcceptedBoard = {
 		version: 1,
 		hardDecisionBarrierVersion: 0,
 		nextAssumptionId: 2,
@@ -932,7 +932,7 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 	await localEvents.get("session_start")({}, localCtx);
 	await localCommands.get("decide").handler("Initial decision", localCtx);
 	const clearPromise = localCommands.get("board-clear").handler("", localCtx);
-	localBranchEntries = [{ type: "custom", customType: "live-decision-board", data: sameVersionSoftBoard }];
+	localBranchEntries = [{ type: "custom", customType: "live-decision-board", data: sameVersionAcceptedBoard }];
 	await localEvents.get("session_tree")({}, localCtx);
 	const entriesBeforeStaleClear = localEntries.length;
 	resolveConfirm(true);
@@ -1098,7 +1098,7 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 	const entriesBeforeManagerActions = localEntries.length;
 	await localCommands.get("board-manage").handler("", localCtx);
 	const finalBoard = localEntries.at(-1).data;
-	assert.equal(localEntries.length, entriesBeforeManagerActions + 4, "manager persists real item mutations exactly once and ignores removed hard/soft actions");
+	assert.equal(localEntries.length, entriesBeforeManagerActions + 4, "manager persists real item mutations exactly once and ignores removed compatibility actions");
 	assert.equal(finalBoard.items.find((item) => item.id === "D1").status, "superseded", "manager can supersede the selected item");
 	assert.equal(finalBoard.items.find((item) => item.id === "D1").text, "Managed decision edited", "manager can edit selected item text before superseding");
 	assert.equal(finalBoard.items.at(-1).id, "D2", "manager supersede creates the next board item id");

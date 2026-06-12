@@ -139,10 +139,10 @@ assert(cleanupD1, "cleanup includes first decision");
 assert.equal(cleanupD1.action, "archive");
 assert.equal(cleanupD1.selected, true);
 assert.match(cleanupD1.reason, /historical/i);
-assert(cleanupD2, "cleanup includes hard decision");
-assert.equal(cleanupD2.action, "keep", "hard items default keep");
-assert.equal(cleanupD2.riskLevel, "low", "legacy hard strength no longer creates special cleanup risk");
-assert.doesNotMatch(cleanupD2.reason, /Hard constraints/i, "recommendation reason does not reference hard constraints");
+assert(cleanupD2, "cleanup includes accepted decision");
+assert.equal(cleanupD2.action, "keep", "accepted items default keep");
+assert.equal(cleanupD2.riskLevel, "low", "legacy strength no longer creates special cleanup risk");
+assert.doesNotMatch(cleanupD2.reason, /Hard constraints/i, "recommendation reason does not reference legacy hard constraints");
 assert(cleanupA1, "cleanup includes assumption");
 assert.equal(cleanupA1.action, "needs_user_review", "proposed items need review");
 assert.equal(cleanupA1.selected, false);
@@ -222,9 +222,11 @@ const acceptedSoftBoard = mod.addBoardItem(mod.createEmptyBoard(), {
 	status: "accepted",
 	strength: "soft",
 });
-assert.equal(mod.hasUninjectedHardChanges(acceptedSoftBoard, 0), true, "accepted soft items are enforced until injected");
+const acceptedSoftBoardEnforced = mod.hasUninjectedEnforcedChanges(acceptedSoftBoard, 0);
+assert.equal(acceptedSoftBoardEnforced, true, "accepted items are enforced until injected");
+assert.equal(mod.hasUninjectedHardChanges(acceptedSoftBoard, 0), acceptedSoftBoardEnforced, "legacy hard helper delegates to enforced helper");
 assert.equal(
-	mod.hasUninjectedHardChanges(acceptedSoftBoard, acceptedSoftBoard.version),
+	mod.hasUninjectedEnforcedChanges(acceptedSoftBoard, acceptedSoftBoard.version),
 	false,
 	"accepted items stop blocking after the current board is injected",
 );
@@ -235,27 +237,27 @@ const proposedOnlyBoard = mod.addBoardItem(mod.createEmptyBoard(), {
 	status: "proposed",
 	strength: "soft",
 });
-assert.equal(mod.hasUninjectedHardChanges(proposedOnlyBoard, 0), false, "proposed items are visible but not enforced");
+assert.equal(mod.hasUninjectedEnforcedChanges(proposedOnlyBoard, 0), false, "proposed items are visible but not enforced");
 
 const acceptedFromProposed = mod.updateBoardItem(proposedOnlyBoard, "D1", { status: "accepted" });
 assert.equal(
-	mod.hasUninjectedHardChanges(acceptedFromProposed, proposedOnlyBoard.version),
+	mod.hasUninjectedEnforcedChanges(acceptedFromProposed, proposedOnlyBoard.version),
 	true,
-	"accepting a proposed item creates a stale enforcement barrier",
+	"accepting a proposed item creates a stale enforced barrier",
 );
 
-assert.equal(mod.hasUninjectedHardChanges(withDecision, 1), true, "accepted changes after injected version are detected");
-assert.equal(mod.hasUninjectedHardChanges(withDecision, 2), false, "injected accepted changes are not stale");
-const rejectedHard = mod.updateBoardItem(withDecision, "D1", { status: "rejected" });
-assert.equal(mod.hasUninjectedHardChanges(rejectedHard, 2), true, "rejecting an accepted item remains stale-sensitive until injected");
+assert.equal(mod.hasUninjectedEnforcedChanges(withDecision, 1), true, "accepted changes after injected version are detected");
+assert.equal(mod.hasUninjectedEnforcedChanges(withDecision, 2), false, "injected accepted changes are not stale");
+const rejectedAccepted = mod.updateBoardItem(withDecision, "D1", { status: "rejected" });
+assert.equal(mod.hasUninjectedEnforcedChanges(rejectedAccepted, 2), true, "rejecting an accepted item remains stale-sensitive until injected");
 const legacyStrengthChanged = mod.updateBoardItem(acceptedSoftBoard, "D1", { strength: "hard" });
 assert.equal(
-	mod.hasUninjectedHardChanges(legacyStrengthChanged, acceptedSoftBoard.version),
+	mod.hasUninjectedEnforcedChanges(legacyStrengthChanged, acceptedSoftBoard.version),
 	false,
 	"legacy strength-only changes do not create enforcement barriers",
 );
-const clearedHard = mod.clearBoard(acceptedSoftBoard);
-assert.equal(mod.hasUninjectedHardChanges(clearedHard, acceptedSoftBoard.version), true, "clearing accepted items remains stale-sensitive until injected");
+const clearedAcceptedBoard = mod.clearBoard(acceptedSoftBoard);
+assert.equal(mod.hasUninjectedEnforcedChanges(clearedAcceptedBoard, acceptedSoftBoard.version), true, "clearing accepted items remains stale-sensitive until injected");
 
 const restored = mod.restoreBoardFromEntries([
 	{ type: "custom", customType: "live-decision-board", data: withAssumption },
@@ -307,7 +309,7 @@ const restoredLowBarrier = mod.restoreBoardFromEntries([
 	},
 ]);
 assert.equal(restoredLowBarrier.hardDecisionBarrierVersion, 2, "restored barrier is at least the hard item version");
-assert.equal(mod.hasUninjectedHardChanges(restoredLowBarrier, 0), true, "low restored barriers cannot bypass hard decisions");
+assert.equal(mod.hasUninjectedEnforcedChanges(restoredLowBarrier, 0), true, "low restored barriers cannot bypass enforced items");
 const restoredHighBarrier = mod.restoreBoardFromEntries([
 	{
 		type: "custom",
@@ -316,7 +318,7 @@ const restoredHighBarrier = mod.restoreBoardFromEntries([
 	},
 ]);
 assert.equal(restoredHighBarrier.hardDecisionBarrierVersion, withDecision.version, "restored barrier is clamped to board version");
-assert.equal(mod.hasUninjectedHardChanges(restoredHighBarrier, withDecision.version), false, "high restored barriers do not deadlock after injection");
+assert.equal(mod.hasUninjectedEnforcedChanges(restoredHighBarrier, withDecision.version), false, "high restored barriers do not deadlock after injection");
 const futureItemVersionRestored = mod.restoreBoardFromEntries([
 	{
 		type: "custom",
@@ -332,12 +334,12 @@ const zeroVersionHardRestored = mod.restoreBoardFromEntries([
 		data: { ...withDecision, version: 0, hardDecisionBarrierVersion: 0, items: [{ ...withDecision.items[1], version: 0 }] },
 	},
 ]);
-assert.deepEqual(zeroVersionHardRestored, mod.createEmptyBoard(), "zero-version restored hard items are rejected");
+assert.deepEqual(zeroVersionHardRestored, mod.createEmptyBoard(), "zero-version restored accepted items are rejected");
 
 const legacyMarkdown = "# Live Decision Board\n\n- D1 | decision | accepted | hard | Legacy hard item\n";
 const parsedLegacy = mod.parseBoardMarkdown(legacyMarkdown, mod.createEmptyBoard());
 assert.equal(parsedLegacy.items[0].strength, "hard", "legacy strength is still parsed for session compatibility");
-assert.equal(mod.hasUninjectedHardChanges(parsedLegacy, 0), true, "accepted legacy items are enforced regardless of strength");
+assert.equal(mod.hasUninjectedEnforcedChanges(parsedLegacy, 0), true, "accepted legacy items are enforced regardless of strength");
 assert.match(mod.serializeBoardMarkdown(parsedLegacy), /\| hard \|/, "serialize keeps strength as compatibility markdown format");
 
 const markdown = mod.serializeBoardMarkdown(withDecision);
