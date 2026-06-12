@@ -102,6 +102,53 @@ assert(overflowWidget.includes("Assumptions (1)"), "visible widget shows non-emp
 assert(overflowWidget.includes("• [A1] Assumption visible in counts"), "visible widget shows every active assumption by default");
 assert(!overflowWidget.some((line) => line.startsWith("…")), "visible widget does not hide items behind overflow cues by default");
 
+let cleanupBoard = mod.createEmptyBoard();
+cleanupBoard = mod.addBoardItem(cleanupBoard, {
+	kind: "decision",
+	text: "Apply Round 5 review fixes for stale guards",
+	status: "accepted",
+	strength: "soft",
+});
+cleanupBoard = mod.addBoardItem(cleanupBoard, {
+	kind: "decision",
+	text: "Use keyboard-first board management",
+	status: "accepted",
+	strength: "hard",
+});
+cleanupBoard = mod.addBoardItem(cleanupBoard, {
+	kind: "assumption",
+	text: "Need user confirmation on archive wording",
+	status: "proposed",
+	strength: "soft",
+});
+cleanupBoard = mod.addBoardItem(cleanupBoard, {
+	kind: "decision",
+	text: "Current product direction remains board hygiene",
+	status: "accepted",
+	strength: "soft",
+});
+
+const cleanupRecommendations = mod.recommendBoardCleanup(cleanupBoard);
+assert.equal(cleanupRecommendations.length, 4, "cleanup recommendations include active items");
+const cleanupD1 = cleanupRecommendations.find((rec) => rec.id === "D1");
+const cleanupD2 = cleanupRecommendations.find((rec) => rec.id === "D2");
+const cleanupA1 = cleanupRecommendations.find((rec) => rec.id === "A1");
+const cleanupD3 = cleanupRecommendations.find((rec) => rec.id === "D3");
+assert(cleanupD1, "cleanup includes first decision");
+assert.equal(cleanupD1.action, "archive");
+assert.equal(cleanupD1.selected, true);
+assert.match(cleanupD1.reason, /historical/i);
+assert(cleanupD2, "cleanup includes hard decision");
+assert.equal(cleanupD2.action, "keep", "hard items default keep");
+assert(cleanupA1, "cleanup includes assumption");
+assert.equal(cleanupA1.action, "needs_user_review", "proposed items need review");
+assert.equal(cleanupA1.selected, false);
+assert(cleanupD3, "cleanup includes ambiguous decision");
+assert.equal(cleanupD3.action, "keep", "ambiguous current items default keep");
+
+const inactiveCleanupBoard = mod.updateBoardItem(cleanupBoard, "D1", { status: "rejected" });
+assert(!mod.recommendBoardCleanup(inactiveCleanupBoard).some((rec) => rec.id === "D1"), "inactive items are not recommended");
+
 const rejected = mod.updateBoardItem(withDecision, "A1", { status: "rejected" });
 assert.equal(rejected.version, 3, "updating item increments version");
 assert.equal(rejected.items[0].status, "rejected");

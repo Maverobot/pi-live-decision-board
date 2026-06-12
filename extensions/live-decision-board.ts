@@ -191,6 +191,83 @@ function activeBoardItems(board: BoardState): BoardItem[] {
 	return board.items.filter(isActiveItem);
 }
 
+export type CleanupAction = "keep" | "archive" | "supersede" | "needs_user_review";
+export type CleanupRiskLevel = "low" | "medium" | "high";
+
+export interface CleanupRecommendation {
+	id: string;
+	itemVersion: number;
+	observedText: string;
+	observedStatus: BoardStatus;
+	observedStrength: BoardStrength;
+	action: CleanupAction;
+	selected: boolean;
+	reason: string;
+	riskLevel: CleanupRiskLevel;
+	requiresExplicitConfirmation: boolean;
+	replacementText?: string;
+}
+
+export function recommendBoardCleanup(board: BoardState): CleanupRecommendation[] {
+	return activeBoardItems(board).sort(compareWidgetItems).map(recommendCleanupForItem);
+}
+
+function recommendCleanupForItem(item: BoardItem): CleanupRecommendation {
+	const base = cleanupBase(item);
+	if (isAcceptedHardItem(item)) {
+		return {
+			...base,
+			action: "keep",
+			selected: false,
+			reason: "Hard constraints are kept by default.",
+			riskLevel: "high",
+			requiresExplicitConfirmation: true,
+		};
+	}
+	if (item.status === "proposed") {
+		return {
+			...base,
+			action: "needs_user_review",
+			selected: false,
+			reason: "Proposed items need user review before cleanup.",
+			riskLevel: "medium",
+			requiresExplicitConfirmation: true,
+		};
+	}
+	if (looksHistorical(item.text)) {
+		return {
+			...base,
+			action: "archive",
+			selected: true,
+			reason: "Looks historical: completed implementation or review-log entry.",
+			riskLevel: "low",
+			requiresExplicitConfirmation: false,
+		};
+	}
+	return {
+		...base,
+		action: "keep",
+		selected: false,
+		reason: "No safe cleanup heuristic matched; keep by default.",
+		riskLevel: "low",
+		requiresExplicitConfirmation: false,
+	};
+	}
+
+function cleanupBase(item: BoardItem): Omit<CleanupRecommendation, "action" | "selected" | "reason" | "riskLevel" | "requiresExplicitConfirmation" | "replacementText"> {
+	return {
+		id: item.id,
+		itemVersion: item.version,
+		observedText: item.text,
+		observedStatus: item.status,
+		observedStrength: item.strength,
+	};
+}
+
+function looksHistorical(text: string): boolean {
+	return /\b(apply round \d+|review fixes|implemented|after the next review round|rename[sd]? \/|add \/board-|fix(?:ed)? .*review|completed|pushed|installed cache)\b/i.test(text);
+}
+
 export function formatBoardForPrompt(board: BoardState): string {
 	const active = activeBoardItems(board);
 	const assumptions = active.filter((item) => item.kind === "assumption");
