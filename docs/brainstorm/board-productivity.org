@@ -171,13 +171,9 @@ MVP behavior:
 1. Load current active board items only.
 2. Classify obvious historical soft items as archive candidates.
 3. Keep hard, proposed, and ambiguous items by default.
-4. Present a review UI grouped by action:
-   - Keep active
-   - Archive from active board
-   - Supersede/edit
-   - Needs user decision
-5. Let user toggle actions, edit replacement text, apply, or cancel.
-6. Apply through existing board helpers in one confirmed operation.
+4. Present a review UI sorted by recommended action, showing item id, status/strength, action, risk, text, and reason.
+5. Let user toggle selected low-risk archive actions, apply, or cancel.
+6. Apply selected archive actions through existing board helpers in one confirmed operation.
 
 MVP non-goals:
 
