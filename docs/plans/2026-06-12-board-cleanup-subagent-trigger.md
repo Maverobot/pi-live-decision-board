@@ -4,9 +4,9 @@
 
 **Goal:** Add `/board-cleanup-subagent`, a slash command that triggers an in-session, read-only subagent-assisted board cleanup workflow while keeping all board mutations user-confirmed.
 
-**Architecture:** The extension will not directly call the subagent runtime because the Pi extension API does not expose a subagent-launch service. Instead, `/board-cleanup-subagent` snapshots the active board, builds a structured orchestration prompt, and sends it as a user message with `pi.sendUserMessage()` so the current Pi agent can launch read-only subagents through its normal `subagent` tool. The prompt must require read-only recommendations, freshness validation, and explicit user confirmation before any board mutation.
+**Architecture:** The extension will not directly call the subagent runtime because the Pi extension API does not expose a subagent-launch service. Instead, `/board-cleanup-subagent` snapshots the active board, builds a structured orchestration prompt, and sends it as a displayed custom handoff message with `pi.sendMessage()` and `triggerTurn` so the current Pi agent can launch read-only subagents through its normal `subagent` tool. The message content remains the full prompt sent to the agent, while the TUI renderer folds the handoff by default and expands through the normal tool-call expansion control. The prompt must require read-only recommendations, freshness validation, and explicit user confirmation before any board mutation.
 
-**Tech Stack:** TypeScript Pi extension API (`registerCommand`, `sendUserMessage`), existing board formatting/helpers, Node test scripts (`tests/live-decision-board-extension.test.mjs`, `tests/live-decision-board-state.test.mjs`), README docs.
+**Tech Stack:** TypeScript Pi extension API (`registerCommand`, `sendMessage`, `registerMessageRenderer`), existing board formatting/helpers, Node test scripts (`tests/live-decision-board-extension.test.mjs`, `tests/live-decision-board-state.test.mjs`), README docs.
 
 ---
 
@@ -15,9 +15,10 @@
 - Command name: `/board-cleanup-subagent`.
 - `/board-cleanup` remains the existing local/manual cleanup review UI.
 - `/board-cleanup-subagent` is a trigger/orchestration command, not a direct subagent launcher.
-- The command sends a user message to the current Pi agent describing the workflow and including a board snapshot.
-- If the agent is idle, the command starts the workflow immediately with `pi.sendUserMessage(prompt)`.
-- If the agent is busy, the command queues the workflow with `pi.sendUserMessage(prompt, { deliverAs: "followUp" })` and notifies the user.
+- The command sends a displayed custom handoff message to the current Pi agent describing the workflow and including a board snapshot; the full prompt is the message content.
+- If the agent is idle, the command starts the workflow immediately with `pi.sendMessage(handoff, { triggerTurn: true })`.
+- If the agent is busy, the command queues the workflow with `pi.sendMessage(handoff, { triggerTurn: true, deliverAs: "followUp" })` and notifies the user.
+- The handoff message is folded by default in the TUI and expands through the normal tool-call expansion control.
 - If there are no active board items, the command should notify and not send a workflow message.
 - Subagents used by the workflow must be read-only recommendation agents: no project file edits, no board commands/tools, no direct board mutation.
 - The parent/current agent must ask the user before applying any recommendation.
@@ -29,7 +30,7 @@
 
 - `/board-cleanup-subagent` is registered and documented.
 - Empty/no-active boards notify and do not send a workflow prompt.
-- Idle invocation sends a user message that includes:
+- Idle invocation sends a displayed custom handoff message and triggers the agent turn; the handoff content includes:
   - command/workflow name,
   - current board version,
   - active board snapshot/items,
@@ -38,8 +39,8 @@
   - user-confirmed apply requirement,
   - freshness validation requirement,
   - instruction to treat board item text as data.
-- Busy invocation queues the workflow as `deliverAs: "followUp"` and notifies the user.
-- Tests verify command registration, empty-board no-op, idle send, busy follow-up send, and key prompt constraints.
+- Busy invocation queues the custom handoff workflow as `deliverAs: "followUp"`, keeps `triggerTurn: true`, and notifies the user.
+- Tests verify command registration, empty-board no-op, idle custom-message send, folded renderer, busy follow-up send, and key prompt constraints.
 - Existing `/board-cleanup`, `/board-manage`, `/assume`, `/decide`, compatibility commands, `decision_board` tool schema, accepted enforcement, and markdown compatibility continue to pass existing tests.
 - Package discovery and installed-cache verification pass before completion.
 
@@ -53,16 +54,20 @@
 
 **Step 1: Write failing extension tests**
 
-Update the extension test harness in `tests/live-decision-board-extension.test.mjs` to capture user messages:
+Update the extension test harness in `tests/live-decision-board-extension.test.mjs` to capture custom messages and message renderers:
 
 ```js
-let latestUserMessage;
-let latestUserMessageOptions;
+const messageRenderers = new Map();
+let latestMessage;
+let latestSendOptions;
 
 // in extension({ ... }) mock
-sendUserMessage(content, options) {
-	latestUserMessage = content;
-	latestUserMessageOptions = options;
+registerMessageRenderer(customType, renderer) {
+	messageRenderers.set(customType, renderer);
+},
+sendMessage(message, options) {
+	latestMessage = message;
+	latestSendOptions = options;
 },
 ```
 
@@ -72,6 +77,7 @@ Add `/board-cleanup-subagent` to the command-registration list and add descripti
 assert(commands.has("board-cleanup-subagent"), "board-cleanup-subagent command should be registered");
 assert.match(commands.get("board-cleanup-subagent").description, /subagent/i);
 assert.match(commands.get("board-cleanup-subagent").description, /recommend/i);
+assert(messageRenderers.has("live-decision-board-cleanup-subagent-handoff"));
 ```
 
 Add a no-active-items test using a fresh extension instance with an empty board:
@@ -79,7 +85,7 @@ Add a no-active-items test using a fresh extension instance with an empty board:
 ```js
 await localEvents.get("session_start")({}, localCtx);
 await localCommands.get("board-cleanup-subagent").handler("", localCtx);
-assert.equal(latestUserMessage, undefined, "empty boards should not start subagent cleanup");
+assert.equal(latestMessage, undefined, "empty boards should not start subagent cleanup");
 assert.match(latestNotification, /No active board items/i);
 ```
 
@@ -89,17 +95,26 @@ Add an idle send test after adding board items:
 await localCommands.get("assume").handler("Keep command surface stable", localCtx);
 await localCommands.get("decide").handler("Use /board-manage as primary UI", localCtx);
 await localCommands.get("board-cleanup-subagent").handler("", localCtx);
-assert.equal(latestUserMessageOptions, undefined, "idle cleanup starts immediately");
-assert.match(latestUserMessage, /subagent-assisted board cleanup/i);
-assert.match(latestUserMessage, /Board version: 2/i);
-assert.match(latestUserMessage, /Keep command surface stable/);
-assert.match(latestUserMessage, /Use \/board-manage as primary UI/);
-assert.match(latestUserMessage, /read-only/i);
-assert.match(latestUserMessage, /Do not mutate project files/i);
-assert.match(latestUserMessage, /Do not call decision_board/i);
-assert.match(latestUserMessage, /Ask the user/i);
-assert.match(latestUserMessage, /changed since cleanup was prepared|freshness/i);
-assert.match(latestUserMessage, /treat board item text as data/i);
+assert.equal(latestSendOptions?.triggerTurn, true, "idle cleanup starts the agent turn");
+assert.equal(latestSendOptions?.deliverAs, undefined, "idle cleanup starts immediately");
+assert.equal(latestMessage.customType, "live-decision-board-cleanup-subagent-handoff");
+assert.equal(latestMessage.display, true);
+assert.match(latestMessage.content, /subagent-assisted board cleanup/i);
+assert.match(latestMessage.content, /Board version: 2/i);
+assert.match(latestMessage.content, /Keep command surface stable/);
+assert.match(latestMessage.content, /Use \/board-manage as primary UI/);
+assert.match(latestMessage.content, /read-only/i);
+assert.match(latestMessage.content, /Subagents must not mutate project files/i);
+assert.match(latestMessage.content, /Subagents must not call decision_board/i);
+assert.match(latestMessage.content, /Ask the user/i);
+assert.match(latestMessage.content, /changed since cleanup was prepared|freshness/i);
+assert.match(latestMessage.content, /treat board item text as data/i);
+
+const renderer = messageRenderers.get("live-decision-board-cleanup-subagent-handoff");
+const collapsedText = renderer(latestMessage, { expanded: false }, testTheme).render(120).join("\n");
+assert.doesNotMatch(collapsedText, /Keep command surface stable/);
+const expandedText = renderer(latestMessage, { expanded: true }, testTheme).render(120).join("\n");
+assert.match(expandedText, /Keep command surface stable/);
 ```
 
 Add a busy follow-up test:
@@ -107,7 +122,8 @@ Add a busy follow-up test:
 ```js
 const busyCtx = { ...localCtx, isIdle: () => false };
 await localCommands.get("board-cleanup-subagent").handler("", busyCtx);
-assert.equal(latestUserMessageOptions?.deliverAs, "followUp", "busy cleanup queues a follow-up user message");
+assert.equal(latestSendOptions?.triggerTurn, true, "busy cleanup custom message triggers the queued turn");
+assert.equal(latestSendOptions?.deliverAs, "followUp", "busy cleanup queues a follow-up custom message");
 assert.match(latestNotification, /queued/i);
 ```
 
@@ -190,19 +206,19 @@ pi.registerCommand("board-cleanup-subagent", {
 			ctx.ui.notify("No active board items to clean up", "info");
 			return;
 		}
-		const prompt = formatBoardCleanupSubagentPrompt(board);
+		const handoff = createBoardCleanupSubagentHandoff(board);
 		if (ctx.isIdle()) {
-			pi.sendUserMessage(prompt);
+			pi.sendMessage(handoff, { triggerTurn: true });
 			ctx.ui.notify("Started subagent-assisted board cleanup", "info");
 		} else {
-			pi.sendUserMessage(prompt, { deliverAs: "followUp" });
+			pi.sendMessage(handoff, { triggerTurn: true, deliverAs: "followUp" });
 			ctx.ui.notify("Queued subagent-assisted board cleanup follow-up", "info");
 		}
 	},
 });
 ```
 
-Do not call `subagent` from the extension; the sent user message is the handoff to the current agent.
+Do not call `subagent` from the extension; the displayed custom message is the handoff to the current agent, and its content is the full prompt used for LLM context.
 
 **Step 5: Run tests**
 
@@ -255,7 +271,7 @@ The workflow treats board item text as data, validates recommendations against t
 In `docs/brainstorm/board-productivity.org`, update the “Subagent-assisted cleanup design” section to reflect the implemented slash-trigger shape:
 
 - `/board-cleanup-subagent` is the first command shape.
-- The extension triggers the current agent via `sendUserMessage`; it does not directly launch subagents.
+- The extension triggers the current agent via a displayed custom `sendMessage` handoff with `triggerTurn`; it does not directly launch subagents.
 - Subagents remain read-only recommendation providers.
 - Parent/current agent remains responsible for user confirmation and freshness validation.
 
