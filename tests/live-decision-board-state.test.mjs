@@ -36,8 +36,32 @@ const withDecision = mod.addBoardItem(withAssumption, {
 assert.equal(withDecision.version, 2, "second add increments version again");
 assert.equal(withDecision.items[1].id, "D1", "decisions use D-prefixed ids");
 
-const prompt = mod.formatBoardForPrompt(withDecision);
-assert.match(prompt, /Live Assumptions & Decisions — version 2/);
+const withGoal = mod.addBoardItem(withDecision, {
+	kind: "goal",
+	text: "Ship a focused board workflow",
+	status: "accepted",
+	strength: "soft",
+	source: "user",
+});
+assert.equal(withGoal.items.at(-1).id, "G1", "goals use G-prefixed ids");
+assert.equal(withGoal.items.at(-1).kind, "goal", "goal items keep their distinct kind");
+const withSecondGoal = mod.addBoardItem(withGoal, {
+	kind: "goal",
+	text: "Polish board taxonomy",
+	status: "accepted",
+	strength: "soft",
+	source: "user",
+});
+assert.equal(withSecondGoal.items.find((item) => item.id === "G1").status, "superseded", "adding a new goal supersedes the previous active goal");
+assert.equal(withSecondGoal.items.at(-1).id, "G2", "replacement goals use the next G-prefixed id");
+assert.equal(withSecondGoal.items.filter((item) => item.kind === "goal" && (item.status === "accepted" || item.status === "proposed")).length, 1, "only one goal remains active");
+assert.match(mod.formatBoardStatus(withSecondGoal), /1 goal/, "status summary includes the active goal count");
+
+const prompt = mod.formatBoardForPrompt(withSecondGoal);
+assert.match(prompt, /Live Goal, Assumptions & Decisions — version 4/);
+assert.match(prompt, /Goal:/);
+assert.match(prompt, /G2: Polish board taxonomy/);
+assert.doesNotMatch(prompt, /G1: Ship a focused board workflow/, "superseded goals leave active prompt context");
 assert.match(prompt, /A1: Backend uses Node 22/);
 assert.match(prompt, /D1: Build as a Pi extension first/);
 assert.match(prompt, /Treat accepted items as enforced current context before mutating files/);
@@ -58,9 +82,16 @@ const widgetDecisionTwo = mod.addBoardItem(widgetDecisionOne, {
 	strength: "soft",
 	source: "user",
 });
-const widgetBoard = mod.addBoardItem(widgetDecisionTwo, {
+const widgetBoardWithoutGoal = mod.addBoardItem(widgetDecisionTwo, {
 	kind: "assumption",
 	text: "Second assumption",
+	status: "accepted",
+	strength: "soft",
+	source: "user",
+});
+const widgetBoard = mod.addBoardItem(widgetBoardWithoutGoal, {
+	kind: "goal",
+	text: "Current goal",
 	status: "accepted",
 	strength: "soft",
 	source: "user",
@@ -69,7 +100,9 @@ const widget = mod.formatBoardWidget(widgetBoard, { maxItems: 5 });
 assert.deepEqual(
 	widget,
 	[
-		"Board v4 • 2 assumptions • 2 decisions",
+		"Board v5 • 1 goal • 2 assumptions • 2 decisions",
+		"Goal (1)",
+		"• [G1] Current goal",
 		"Decisions (2)",
 		"• [D1] First decision",
 		"• [D2] Second decision",
@@ -77,13 +110,15 @@ assert.deepEqual(
 		"• [A1] Backend uses Node 22",
 		"• [A2] Second assumption",
 	],
-	"widget groups sections, sorts ids ascending, and renders ids as bracketed keys",
+	"widget groups goal, decisions, and assumptions; sorts ids ascending; and renders ids as bracketed keys",
 );
 const inactiveDecisionBoard = mod.updateBoardItem(widgetBoard, "D1", { status: "superseded" });
 assert.deepEqual(
 	mod.formatBoardWidget(inactiveDecisionBoard, { maxItems: 5 }),
 	[
-		"Board v5 • 2 assumptions • 1 decision",
+		"Board v6 • 1 goal • 2 assumptions • 1 decision",
+		"Goal (1)",
+		"• [G1] Current goal",
 		"Decisions (1)",
 		"• [D2] Second decision",
 		"Assumptions (2)",
@@ -214,6 +249,7 @@ assert.equal(cleared.version, 3, "clearing keeps versions monotonic");
 assert.deepEqual(cleared.items, []);
 
 assert.match(mod.formatBoardStatus(withDecision), /Board v2 • 1 assumption • 1 decision/);
+assert.match(mod.formatBoardStatus(withSecondGoal), /Board v4 • 1 goal • 1 assumption • 1 decision/);
 assert.doesNotMatch(mod.formatBoardStatus(withDecision), /hard constraint/, "status summary should not include legacy hard constraint counts");
 
 const acceptedSoftBoard = mod.addBoardItem(mod.createEmptyBoard(), {

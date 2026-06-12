@@ -1,6 +1,6 @@
 # pi-live-decision-board
 
-A [Pi](https://pi.dev) package that adds a live, mutable assumptions and decisions board to Pi coding sessions.
+A [Pi](https://pi.dev) package that adds a live, mutable goal, assumptions, and decisions board to Pi coding sessions.
 
 The board is visible while the agent works, editable by the user, writable by the model through a tool, injected into future model context, and enforced before stale accepted-item mutations.
 
@@ -23,6 +23,7 @@ pi -e .
 | Command | Purpose |
 | --- | --- |
 | `/board-manage` | Primary keyboard workflow for selecting board items and editing, accepting/rejecting, superseding, or clearing them |
+| `/goal <text>` | Quick capture: set the single current goal |
 | `/assume <text>` | Quick capture: add an accepted assumption |
 | `/decide <text>` | Quick capture: add an accepted decision |
 | `/board-cleanup` | Review active board items and archive obvious historical entries after confirmation |
@@ -56,12 +57,12 @@ The extension registers a `decision_board` tool with actions:
 
 `review_cleanup` accepts subagent recommendations from read-only cleanup helpers and opens the cleanup manager UI for interactive review and confirmation before applying anything.
 
-Prompt guidance tells the model to record only assumptions and decisions that should affect future behavior, not routine implementation progress. Board cleanup guidance says: “Use a single read-only recommendation subagent for future board cleanup runs; do not launch multiple parallel board-cleanup recommendation subagents unless explicitly requested.”
+Prompt guidance tells the model to keep one current goal plus assumptions and decisions that should affect future behavior, not routine implementation progress. Board cleanup guidance says: “Use a single read-only recommendation subagent for future board cleanup runs; do not launch multiple parallel board-cleanup recommendation subagents unless explicitly requested.”
 
 ## How it works
 
 - Board state is persisted in Pi session custom entries and restored from the active branch.
-- The widget shows a compact summary followed by indented Decisions/Assumptions sections with all active items by default; `/board-toggle` collapses the body while keeping the summary line visible. Footer status and titled separator lines are intentionally suppressed to avoid duplicate or noisy board chrome.
+- The widget shows a compact summary followed by indented Goal, Decisions, and Assumptions sections with all active items by default; `/board-toggle` collapses the body while keeping the summary line visible. Footer status and titled separator lines are intentionally suppressed to avoid duplicate or noisy board chrome.
 - `/board-snapshot` records the active context view (accepted/proposed items plus board rules) as a visible message.
 - `/board-manage` is the primary TUI mutation UI for existing board items: `↑↓/j/k` select, `enter/e` edit, `a` accept, `r` reject/remove from the active board, `u` supersede, `c` clear, `q/esc` close. Edit rewrites the selected item text in place; supersede retires the selected item and creates a linked accepted replacement.
 - Item-targeted slash commands remain available as compatibility/power-user fallbacks for users who want to act by id, but the keyboard manager is the preferred workflow.
@@ -76,6 +77,7 @@ Prompt guidance tells the model to record only assumptions and decisions that sh
 ```md
 # Live Decision Board
 
+- G1 | goal | accepted | soft | Ship the current board workflow
 - A1 | assumption | accepted | soft | Backend uses Node 22
 - D1 | decision | accepted | hard | Build as a Pi extension first
 ```
@@ -86,15 +88,17 @@ Valid statuses: `proposed`, `accepted`, `rejected`, `superseded`.
 
 ## Accepted vs proposed items
 
-Accepted items are enforced as current context. The agent should treat every accepted assumption or decision as relevant before mutating files.
+Accepted items are enforced as current context. The agent should treat the accepted Goal, assumptions, and decisions as relevant before mutating files.
 
-Proposed items are visible drafts. Use them for uncertain assumptions or decisions that need review before they become enforced.
+There is at most one active Goal. Use it for the current objective. Use Assumptions for uncertain or contextual facts, and Decisions for durable choices or constraints that should guide future work. Archive or supersede Decisions once they become historical implementation details.
+
+Proposed items are visible drafts. Use them for uncertain goals, assumptions, or decisions that need review before they become enforced.
 
 The legacy `soft`/`hard` strength field may appear in older session data and markdown exports. It is retained for compatibility only and does not affect enforcement.
 
 ## Board hygiene
 
-The board is the current working context, not a changelog. Add or keep board items only when they affect future behavior.
+The board is the current working context, not a changelog. Add or keep one Goal plus board items only when they affect future behavior.
 
 Good board items:
 
@@ -135,7 +139,7 @@ npm install
 npm test
 ```
 
-The tests exercise state helpers, command/tool registration, context injection, steering, markdown parsing, and stale accepted-item mutation blocking.
+The tests exercise state helpers, goal/assumption/decision command and tool registration, context injection, steering, markdown parsing, cleanup review, and stale accepted-item mutation blocking.
 
 ## License
 

@@ -1,7 +1,7 @@
 /**
  * Live Decision Board
  *
- * A Pi extension that keeps a visible, editable assumptions/decisions board,
+ * A Pi extension that keeps a visible, editable goal/assumptions/decisions board,
  * injects the latest board into model context, and blocks stale accepted-item
  * mutations until the board has been injected into a provider request.
  */
@@ -11,7 +11,7 @@ import type { ContextEvent, ExtensionAPI, ExtensionContext, Theme } from "@earen
 import { Key, matchesKey, Text, truncateToWidth } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 
-export type BoardKind = "assumption" | "decision";
+export type BoardKind = "goal" | "assumption" | "decision";
 export type BoardStatus = "proposed" | "accepted" | "rejected" | "superseded";
 export type BoardStrength = "soft" | "hard";
 export type BoardSource = "user" | "agent" | "discussion-loop";
@@ -32,6 +32,7 @@ export interface BoardItem {
 export interface BoardState {
 	version: number;
 	hardDecisionBarrierVersion: number;
+	nextGoalId: number;
 	nextAssumptionId: number;
 	nextDecisionId: number;
 	items: BoardItem[];
@@ -60,11 +61,11 @@ const BOARD_CONTEXT_TYPES = new Set([CONTEXT_CUSTOM_TYPE, VISIBLE_CUSTOM_TYPE, D
 
 const BOARD_ITEM_STATUSES: BoardStatus[] = ["proposed", "accepted", "rejected", "superseded"];
 const BOARD_ITEM_STRENGTHS: BoardStrength[] = ["soft", "hard"];
-const BOARD_ITEM_KINDS: BoardKind[] = ["assumption", "decision"];
+const BOARD_ITEM_KINDS: BoardKind[] = ["goal", "assumption", "decision"];
 const BOARD_ITEM_SOURCES: BoardSource[] = ["user", "agent", "discussion-loop"];
 
 export function createEmptyBoard(): BoardState {
-	return { version: 0, hardDecisionBarrierVersion: 0, nextAssumptionId: 1, nextDecisionId: 1, items: [] };
+	return { version: 0, hardDecisionBarrierVersion: 0, nextGoalId: 1, nextAssumptionId: 1, nextDecisionId: 1, items: [] };
 }
 
 export function clearBoard(board: BoardState): BoardState {
@@ -74,6 +75,7 @@ export function clearBoard(board: BoardState): BoardState {
 		hardDecisionBarrierVersion: board.items.some(isEnforcedItem)
 			? nextVersion
 			: getHardDecisionBarrierVersion(board),
+		nextGoalId: 1,
 		nextAssumptionId: 1,
 		nextDecisionId: 1,
 		items: [],
@@ -107,7 +109,7 @@ export function addBoardItem(board: BoardState, input: NewBoardItem): BoardState
 	const nextVersion = board.version + 1;
 	const status = input.status ?? "accepted";
 	const strength = input.strength ?? "soft";
-	const id = input.kind === "assumption" ? `A${board.nextAssumptionId}` : `D${board.nextDecisionId}`;
+	const id = nextBoardItemId(board, input.kind);
 	const timestamp = now();
 	const item: BoardItem = {
 		id,
@@ -122,13 +124,31 @@ export function addBoardItem(board: BoardState, input: NewBoardItem): BoardState
 		supersedes: input.supersedes,
 	};
 
+	const supersededActiveGoal = input.kind === "goal" && board.items.some((existing) => isActiveGoal(existing) && isEnforcedItem(existing));
+	const existingItems = input.kind === "goal"
+		? board.items.map((existing) => isActiveGoal(existing) ? { ...existing, status: "superseded" as const, version: nextVersion, updatedAt: timestamp } : existing)
+		: board.items;
+
 	return {
 		version: nextVersion,
-		hardDecisionBarrierVersion: isEnforcedItem(item) ? nextVersion : getHardDecisionBarrierVersion(board),
+		hardDecisionBarrierVersion: isEnforcedItem(item) || supersededActiveGoal
+			? nextVersion
+			: getHardDecisionBarrierVersion(board),
+		nextGoalId: input.kind === "goal" ? board.nextGoalId + 1 : board.nextGoalId,
 		nextAssumptionId: input.kind === "assumption" ? board.nextAssumptionId + 1 : board.nextAssumptionId,
 		nextDecisionId: input.kind === "decision" ? board.nextDecisionId + 1 : board.nextDecisionId,
-		items: [...board.items, item],
+		items: [...existingItems, item],
 	};
+}
+
+function nextBoardItemId(board: BoardState, kind: BoardKind): string {
+	if (kind === "goal") return `G${board.nextGoalId}`;
+	if (kind === "assumption") return `A${board.nextAssumptionId}`;
+	return `D${board.nextDecisionId}`;
+}
+
+function isActiveGoal(item: BoardItem): boolean {
+	return item.kind === "goal" && isActiveItem(item);
 }
 
 export function updateBoardItem(board: BoardState, id: string, patch: BoardPatch): BoardState {
@@ -599,16 +619,19 @@ function formatBoardCleanupSubagentPrompt(board: BoardState): string {
 
 export function formatBoardForPrompt(board: BoardState): string {
 	const active = activeBoardItems(board);
+	const goals = active.filter((item) => item.kind === "goal");
 	const assumptions = active.filter((item) => item.kind === "assumption");
 	const decisions = active.filter((item) => item.kind === "decision");
-	const lines = [`## Live Assumptions & Decisions — version ${board.version}`, ""];
+	const lines = [`## Live Goal, Assumptions & Decisions — version ${board.version}`, ""];
 	lines.push("Rules:");
 	lines.push("- Treat accepted items as enforced current context before mutating files.");
 	lines.push("- Proposed items are visible drafts; reconcile or accept them before relying on them as enforced context.");
 	lines.push("- If current work conflicts with this board, reconcile before continuing.");
-	lines.push("- Record only assumptions or decisions that should affect future behavior; do not use the board as an implementation log.");
+	lines.push("- Keep at most one active Goal plus assumptions or decisions that affect future behavior; do not use the board as an implementation log.");
 	lines.push("");
-	lines.push("Assumptions:");
+	lines.push("Goal:");
+	lines.push(...(goals.length ? goals.map(formatPromptItem) : ["- none"]));
+	lines.push("", "Assumptions:");
 	lines.push(...(assumptions.length ? assumptions.map(formatPromptItem) : ["- none"]));
 	lines.push("", "Decisions:");
 	lines.push(...(decisions.length ? decisions.map(formatPromptItem) : ["- none"]));
@@ -621,9 +644,10 @@ function formatPromptItem(item: BoardItem): string {
 
 export function formatBoardStatus(board: BoardState): string {
 	const active = activeBoardItems(board);
+	const goals = active.filter((item) => item.kind === "goal").length;
 	const assumptions = active.filter((item) => item.kind === "assumption").length;
 	const decisions = active.filter((item) => item.kind === "decision").length;
-	return `Board v${board.version} • ${pluralize(assumptions, "assumption")} • ${pluralize(decisions, "decision")}`;
+	return [`Board v${board.version}`, ...(goals > 0 ? [pluralize(goals, "goal")] : []), pluralize(assumptions, "assumption"), pluralize(decisions, "decision")].join(" • ");
 }
 
 function pluralize(count: number, label: string): string {
@@ -632,10 +656,12 @@ function pluralize(count: number, label: string): string {
 
 function formatBoardStatusForWidget(board: BoardState, theme: Theme): string {
 	const active = activeBoardItems(board);
+	const goals = active.filter((item) => item.kind === "goal").length;
 	const assumptions = active.filter((item) => item.kind === "assumption").length;
 	const decisions = active.filter((item) => item.kind === "decision").length;
 	return [
 		theme.fg("muted", "Board"),
+		...(goals > 0 ? [theme.fg("success", pluralize(goals, "goal"))] : []),
 		theme.fg("success", pluralize(assumptions, "assumption")),
 		theme.fg("success", pluralize(decisions, "decision")),
 	].join(" • ");
@@ -648,10 +674,10 @@ function formatBoardWidgetText(board: BoardState, theme: Theme, options: { colla
 }
 
 function colorizeWidgetLine(line: string, theme: Theme): string {
-	const section = /^(Decisions|Assumptions) \((\d+)\)$/.exec(line);
+	const section = /^(Goal|Decisions|Assumptions) \((\d+)\)$/.exec(line);
 	if (section) return `  ${theme.fg("accent", section[1])} ${theme.fg("muted", `(${section[2]})`)}`;
 
-	const item = /^([!•]) \[([AD]\d+)] (.*)$/.exec(line);
+	const item = /^([!•]) \[([GAD]\d+)] (.*)$/.exec(line);
 	if (!item) return line;
 	return `    ${theme.fg("dim", "•")} ${theme.fg("accent", `[${item[2]}]`)} ${theme.fg("muted", item[3])}`;
 }
@@ -659,11 +685,13 @@ function colorizeWidgetLine(line: string, theme: Theme): string {
 export function formatBoardWidget(board: BoardState, options: { maxItems?: number } = {}): string[] {
 	const maxItems = options.maxItems ?? Number.POSITIVE_INFINITY;
 	const active = activeBoardItems(board).sort(compareWidgetItems);
+	const goals = active.filter((item) => item.kind === "goal");
 	const decisions = active.filter((item) => item.kind === "decision");
 	const assumptions = active.filter((item) => item.kind === "assumption");
 
 	const lines = [formatBoardStatus(board)];
 	let remainingItems = maxItems;
+	remainingItems = appendWidgetSection(lines, "Goal", goals, remainingItems);
 	remainingItems = appendWidgetSection(lines, "Decisions", decisions, remainingItems);
 	appendWidgetSection(lines, "Assumptions", assumptions, remainingItems);
 	return lines;
@@ -714,6 +742,7 @@ function normalizeBoardState(value: unknown): BoardState | undefined {
 	const candidate = value as Partial<BoardState>;
 	if (
 		!isNonNegativeInteger(candidate.version) ||
+		(candidate.nextGoalId !== undefined && !isPositiveInteger(candidate.nextGoalId)) ||
 		!isPositiveInteger(candidate.nextAssumptionId) ||
 		!isPositiveInteger(candidate.nextDecisionId) ||
 		!Array.isArray(candidate.items) ||
@@ -728,21 +757,28 @@ function normalizeBoardState(value: unknown): BoardState | undefined {
 	if (items.some((item) => item.version > version)) return undefined;
 
 	const seenIds = new Set<string>();
+	let maxGoalId = 0;
 	let maxAssumptionId = 0;
 	let maxDecisionId = 0;
+	let activeGoalCount = 0;
 	for (const item of items) {
 		if (seenIds.has(item.id)) return undefined;
 		seenIds.add(item.id);
 		const numericId = Number.parseInt(item.id.slice(1), 10);
-		if (item.kind === "assumption") maxAssumptionId = Math.max(maxAssumptionId, numericId);
+		if (item.kind === "goal") {
+			maxGoalId = Math.max(maxGoalId, numericId);
+			if (isActiveItem(item)) activeGoalCount += 1;
+		} else if (item.kind === "assumption") maxAssumptionId = Math.max(maxAssumptionId, numericId);
 		else maxDecisionId = Math.max(maxDecisionId, numericId);
 	}
+	if (activeGoalCount > 1) return undefined;
 
 	const requiredBarrier = maxEnforcedItemVersion(items);
 	const restoredBarrier = candidate.hardDecisionBarrierVersion ?? requiredBarrier;
 	return {
 		version,
 		hardDecisionBarrierVersion: Math.min(version, Math.max(restoredBarrier, requiredBarrier)),
+		nextGoalId: Math.max(candidate.nextGoalId ?? 1, maxGoalId + 1),
 		nextAssumptionId: Math.max(candidate.nextAssumptionId, maxAssumptionId + 1),
 		nextDecisionId: Math.max(candidate.nextDecisionId, maxDecisionId + 1),
 		items,
@@ -754,9 +790,9 @@ function isBoardItem(value: unknown): value is BoardItem {
 	const item = value as Partial<BoardItem>;
 	return (
 		typeof item.id === "string" &&
-		/^[AD]\d+$/.test(item.id) &&
+		/^[GAD]\d+$/.test(item.id) &&
 		isBoardKind(item.kind ?? "") &&
-		((item.id.startsWith("A") && item.kind === "assumption") || (item.id.startsWith("D") && item.kind === "decision")) &&
+		((item.id.startsWith("G") && item.kind === "goal") || (item.id.startsWith("A") && item.kind === "assumption") || (item.id.startsWith("D") && item.kind === "decision")) &&
 		typeof item.text === "string" &&
 		normalizeBoardText(item.text).length > 0 &&
 		isBoardStatus(item.status ?? "") &&
@@ -784,7 +820,7 @@ function isNonNegativeFiniteNumber(value: unknown): value is number {
 export function serializeBoardMarkdown(board: BoardState): string {
 	const lines = ["# Live Decision Board", ""];
 	if (board.items.length === 0) {
-		lines.push("_No assumptions or decisions yet._");
+		lines.push("_No goal, assumptions, or decisions yet._");
 		return `${lines.join("\n")}\n`;
 	}
 
@@ -799,6 +835,7 @@ export function parseBoardMarkdown(markdown: string, previousBoard: BoardState):
 	const nextVersion = previousBoard.version + 1;
 	const timestamp = now();
 	const items: BoardItem[] = [];
+	let maxGoalId = 0;
 	let maxAssumptionId = 0;
 	let maxDecisionId = 0;
 
@@ -824,8 +861,12 @@ export function parseBoardMarkdown(markdown: string, previousBoard: BoardState):
 
 		items.push(parsedItem);
 		const numericId = Number.parseInt(parsedItem.id.slice(1), 10);
-		if (parsedItem.kind === "assumption") maxAssumptionId = Math.max(maxAssumptionId, numericId);
+		if (parsedItem.kind === "goal") maxGoalId = Math.max(maxGoalId, numericId);
+		else if (parsedItem.kind === "assumption") maxAssumptionId = Math.max(maxAssumptionId, numericId);
 		else maxDecisionId = Math.max(maxDecisionId, numericId);
+	}
+	if (items.filter(isActiveGoal).length > 1) {
+		throw new Error("Live Decision Board can have only one active goal");
 	}
 
 	return {
@@ -833,6 +874,7 @@ export function parseBoardMarkdown(markdown: string, previousBoard: BoardState):
 		hardDecisionBarrierVersion: hasEnforcedBoundaryChanged(previousBoard.items, items)
 			? nextVersion
 			: getHardDecisionBarrierVersion(previousBoard),
+		nextGoalId: maxGoalId + 1,
 		nextAssumptionId: maxAssumptionId + 1,
 		nextDecisionId: maxDecisionId + 1,
 		items,
@@ -851,7 +893,7 @@ function parseMarkdownItem(input: {
 	timestamp: number;
 }): BoardItem {
 	const id = input.id.trim();
-	if (!/^[AD]\d+$/.test(id)) throw new Error(`Invalid board item id on line ${input.lineIndex + 1}: ${id}`);
+	if (!/^[GAD]\d+$/.test(id)) throw new Error(`Invalid board item id on line ${input.lineIndex + 1}: ${id}`);
 	if (!isBoardKind(input.kind)) throw new Error(`Invalid board item kind on line ${input.lineIndex + 1}: ${input.kind}`);
 	if (!isBoardStatus(input.status)) throw new Error(`Invalid board item status on line ${input.lineIndex + 1}: ${input.status}`);
 	if (!isBoardStrength(input.strength)) {
@@ -859,7 +901,7 @@ function parseMarkdownItem(input: {
 	}
 	const text = normalizeBoardText(input.text);
 	if (!text) throw new Error(`Missing board item text on line ${input.lineIndex + 1}`);
-	if ((id.startsWith("A") && input.kind !== "assumption") || (id.startsWith("D") && input.kind !== "decision")) {
+	if ((id.startsWith("G") && input.kind !== "goal") || (id.startsWith("A") && input.kind !== "assumption") || (id.startsWith("D") && input.kind !== "decision")) {
 		throw new Error(`Board item ${id} prefix does not match kind ${input.kind}`);
 	}
 
@@ -1538,7 +1580,7 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 		if (ctx.hasUI) {
 			const confirmed = await ctx.ui.confirm(
 				"Clear Live Decision Board?",
-				"This clears assumptions and decisions for this branch.",
+				"This clears the current goal, assumptions, and decisions for this branch.",
 			);
 			if (!confirmed) return;
 			if (boardEpoch !== baseEpoch) {
@@ -1617,12 +1659,12 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 	pi.registerMessageRenderer?.(CLEANUP_SUBAGENT_HANDOFF_CUSTOM_TYPE, renderBoardCleanupSubagentHandoff);
 
 	pi.registerCommand("board-snapshot", {
-		description: "Show the active context snapshot of the live assumptions/decisions board as a visible message",
+		description: "Show the active context snapshot of the live goal/assumptions/decisions board as a visible message",
 		handler: async (_args, _ctx) => showBoard(),
 	});
 
 	pi.registerCommand("board-toggle", {
-		description: "Collapse or expand the persistent live assumptions/decisions board widget body",
+		description: "Collapse or expand the persistent live goal/assumptions/decisions board widget body",
 		handler: async (_args, ctx) => {
 			widgetExpanded = !widgetExpanded;
 			updateUi(ctx);
@@ -1667,6 +1709,15 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 				pi.sendMessage(message, { triggerTurn: true, deliverAs: "followUp" });
 				ctx.ui.notify("Queued subagent-assisted board cleanup follow-up", "info");
 			}
+		},
+	});
+
+	pi.registerCommand("goal", {
+		description: "Set the single current goal on the live board",
+		handler: async (args, ctx) => {
+			const text = args.trim();
+			if (!text) return ctx.ui.notify("Usage: /goal <text>", "warning");
+			safeApplyBoard(ctx, "Set current goal", () => addBoardItem(board, { kind: "goal", text, source: "user" }));
 		},
 	});
 
@@ -1753,12 +1804,12 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "decision_board",
 		label: "Decision Board",
-		description: "List or update the live assumptions/decisions board.",
-		promptSnippet: "List or update live assumptions and decisions for the current project.",
+		description: "List or update the live goal/assumptions/decisions board.",
+		promptSnippet: "List or update the current goal, assumptions, and decisions for the current project.",
 		promptGuidelines: [
-			"Use decision_board to record accepted assumptions or decisions and enforce them as the current contract for this work.",
+			"Use decision_board to record one current goal plus accepted assumptions or decisions and enforce them as the current contract for this work.",
 			"Use decision_board before acting on an accepted decision that is not already recorded in the live board.",
-			"Treat proposed items as visible draft assumptions/decisions; reconcile them before marking them accepted.",
+			"Treat proposed items as visible draft goals/assumptions/decisions; reconcile them before marking them accepted.",
 			"Use decision_board as a current-context contract, not as an implementation log for progress updates, tests run, files changed, or completed review batches.",
 			"Use a single read-only recommendation subagent for future board cleanup runs; do not launch multiple parallel board-cleanup recommendation subagents unless explicitly requested.",
 			"After /board-cleanup-subagent recommendations are prepared, call decision_board.review_cleanup with the recommendation objects for interactive review.",
@@ -1768,7 +1819,7 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 		parameters: Type.Object({
 			action: StringEnum(["list", "add", "update", "set_status", "set_strength", "supersede", "review_cleanup"] as const),
 			id: Type.Optional(Type.String()),
-			kind: Type.Optional(StringEnum(["assumption", "decision"] as const)),
+			kind: Type.Optional(StringEnum(["goal", "assumption", "decision"] as const)),
 			text: Type.Optional(Type.String()),
 			status: Type.Optional(StringEnum(["proposed", "accepted", "rejected", "superseded"] as const)),
 			strength: Type.Optional(StringEnum(["soft", "hard"] as const)),

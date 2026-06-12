@@ -61,6 +61,7 @@ for (const name of [
 	"board-manage",
 	"board-cleanup",
 	"board-cleanup-subagent",
+	"goal",
 	"assume",
 	"decide",
 	"board-hard",
@@ -98,6 +99,7 @@ assert.equal(registeredTool.name, "decision_board", "decision_board tool should 
 assert.equal(registeredTool.executionMode, "sequential", "decision_board runs sequentially before later tool preflights");
 const promptGuidelines = registeredTool.promptGuidelines.join("\n");
 const singleCleanupSubagentContract = "Use a single read-only recommendation subagent for future board cleanup runs; do not launch multiple parallel board-cleanup recommendation subagents unless explicitly requested.";
+assert.match(promptGuidelines, /one current goal/i, "decision_board prompt guidance should mention the single current goal");
 assert.match(promptGuidelines, /accepted/i, "decision_board prompt guidance should mention accepted items");
 assert.match(promptGuidelines, /proposed/i, "decision_board prompt guidance should explain proposed items");
 assert.match(promptGuidelines, /enforce/i, "decision_board prompt guidance should mention enforcement");
@@ -255,7 +257,7 @@ const contextResult = await events.get("context")(
 	ctx,
 );
 assert.equal(contextResult.messages[0].customType, "live-decision-board-context");
-assert.match(contextResult.messages[0].content, /Live Assumptions & Decisions/);
+assert.match(contextResult.messages[0].content, /Live Goal, Assumptions & Decisions/);
 assert.equal(
 	contextResult.messages.filter((message) => message.customType?.startsWith("live-decision-board")).length,
 	1,
@@ -311,6 +313,62 @@ assert.equal(
 );
 const allowedAfterClearInjection = await events.get("tool_call")({ toolName: "write", input: { path: "x", content: "y" } }, ctx);
 assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board releases the stale enforced-item guard");
+
+{
+	const localCommands = new Map();
+	const localEvents = new Map();
+	const localEntries = [];
+	let localTool;
+	const localCtx = {
+		hasUI: true,
+		isIdle: () => true,
+		sessionManager: { getBranch: () => [] },
+		ui: {
+			theme: { fg: (_color, text) => text },
+			setStatus: () => {},
+			setWidget: () => {},
+			notify: () => {},
+			confirm: async () => true,
+			editor: async (_title, initial) => initial,
+		},
+	};
+
+	extension({
+		on(eventName, callback) {
+			localEvents.set(eventName, callback);
+		},
+		registerCommand(name, def) {
+			localCommands.set(name, def);
+		},
+		registerTool(tool) {
+			localTool = tool;
+		},
+		appendEntry(customType, data) {
+			localEntries.push({ type: "custom", customType, data });
+		},
+		sendMessage() {},
+	});
+
+	await localEvents.get("session_start")({}, localCtx);
+	await localCommands.get("goal").handler("Ship the board taxonomy", localCtx);
+	await localCommands.get("goal").handler("Polish the board taxonomy", localCtx);
+	let board = localEntries.at(-1).data;
+	assert.equal(board.items.find((item) => item.id === "G1")?.status, "superseded", "/goal should supersede the previous active goal");
+	assert.equal(board.items.find((item) => item.id === "G2")?.text, "Polish the board taxonomy", "/goal should create the current goal");
+	assert.equal(board.items.filter((item) => item.kind === "goal" && item.status === "accepted").length, 1, "/goal keeps one accepted current goal");
+
+	await localTool.execute(
+		"goal-tool",
+		{ action: "add", kind: "goal", text: "Tool-set current goal", status: "accepted", strength: "soft" },
+		undefined,
+		undefined,
+		localCtx,
+	);
+	board = localEntries.at(-1).data;
+	assert.equal(board.items.find((item) => item.id === "G2")?.status, "superseded", "decision_board add kind=goal should supersede the previous goal");
+	assert.equal(board.items.at(-1).id, "G3", "tool-created goals use G-prefixed ids");
+	assert(JSON.stringify(localTool.parameters).includes('"goal"'), "decision_board schema should accept goal kind");
+}
 
 {
 	let nonTuiNotification = "";
@@ -1621,7 +1679,7 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 	const entriesBeforeClear = localEntries.length;
 	await localCommands.get("board-manage").handler("", localCtx);
 	assert.equal(confirmTitle, "Clear Live Decision Board?");
-	assert.match(confirmMessage, /This clears assumptions and decisions for this branch\./);
+	assert.match(confirmMessage, /This clears the current goal, assumptions, and decisions for this branch\./);
 	assert.equal(localEntries.length, entriesBeforeClear + 1, "manager clear persists exactly once after confirmation");
 	assert.deepEqual(localEntries.at(-1).data.items, [], "manager clear removes all board items");
 	assert.match(latestNotification, /Cleared board/);

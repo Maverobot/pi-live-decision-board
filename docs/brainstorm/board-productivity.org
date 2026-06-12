@@ -335,13 +335,14 @@ Per-item confirmation is required for:
 Cancel must leave board state untouched.
 
 * Agent and tool guidance changes
-The model should use =decision_board= only for currently actionable assumptions/decisions.
+The model should use =decision_board= only for the current goal and currently actionable assumptions/decisions.
 
 Proposed guidance:
 
-- Use =decision_board= only when the item should alter future behavior.
+- Use =decision_board= only when the current goal or item should alter future behavior.
 - Do not record progress, implementation steps, review batches, tests run, files changed, or completed tasks.
 - Before adding, inspect existing items; update, supersede, or ask about cleanup instead of adding duplicates.
+- Keep at most one active Goal. Use it for the current objective; use Assumptions for uncertain/contextual facts; use Decisions for durable choices or constraints that should guide future work.
 - Write evergreen constraint/preference text, not "we implemented..." or "round N fixed...".
 - Use =proposed= for uncertain items.
 - Do not accept, reject, archive, or supersede user-owned or accepted items without explicit user confirmation.
