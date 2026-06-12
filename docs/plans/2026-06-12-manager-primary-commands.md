@@ -50,6 +50,7 @@ assert.match(commands.get("board-reject").description, /power-user|compatibility
 assert.match(commands.get("board-accept").description, /power-user|compatibility/i, "board-accept should be documented as a fallback command");
 assert.match(commands.get("board-supersede").description, /power-user|compatibility/i, "board-supersede should be documented as a fallback command");
 assert.match(commands.get("board-clear").description, /power-user|fallback/i, "board-clear should be documented as a fallback command");
+assert.doesNotMatch(commands.get("board-clear").description, /prefer\s+\/board-manage/i, "board-clear should not prefer board-manage until manager clear exists");
 ```
 
 Keep the existing assertions that IDs are visible in manager rows and widget output.
@@ -71,7 +72,7 @@ In `extensions/live-decision-board.ts`:
 - Change `/board-manage` description to something like:
 
 ```ts
-description: "Primary UI for live board item actions: edit, accept/reject, supersede, or clear",
+description: "Primary UI for live board item actions: edit, accept/reject, or supersede",
 ```
 
 - Change item-targeted command descriptions to explicit fallback wording:
@@ -82,10 +83,10 @@ description: "Power-user fallback: accept a board item by id; prefer /board-mana
 description: "Power-user fallback: supersede a board item by id; prefer /board-manage",
 ```
 
-- Change `/board-clear` description to:
+- Change `/board-clear` description to fallback wording that does not prefer `/board-manage` until Task 2 adds manager clear:
 
 ```ts
-description: "Power-user fallback: clear the live board after confirmation; prefer /board-manage",
+description: "Power-user fallback: clear the live board after confirmation",
 ```
 
 - Optionally change `/board` description to:
@@ -107,7 +108,7 @@ Restructure `README.md` command documentation into:
 
 | Command | Purpose |
 | --- | --- |
-| `/board-manage` | Primary keyboard UI to select board items and edit, accept/reject, supersede, or clear with confirmation |
+| `/board-manage` | Primary keyboard UI to select board items and edit, accept/reject, or supersede them |
 | `/assume <text>` | Quick capture: add an accepted assumption |
 | `/decide <text>` | Quick capture: add an accepted decision |
 | `/board-cleanup` | Review active board items and archive obvious historical entries after confirmation |
@@ -122,12 +123,12 @@ Restructure `README.md` command documentation into:
 | `/board-reject <id>` | Power-user fallback for rejecting an item by id; prefer `/board-manage` |
 | `/board-accept <id>` | Power-user fallback for accepting an item by id; prefer `/board-manage` |
 | `/board-supersede <id> <new text>` | Power-user fallback for superseding an item by id; prefer `/board-manage` |
-| `/board-clear` | Power-user fallback for clearing the board after confirmation; prefer `/board-manage` |
+| `/board-clear` | Power-user fallback for clearing the board after confirmation; prefer `/board-manage` after Task 2 adds manager clear |
 | `/board-hard <id>` | Deprecated compatibility no-op: accepted-item enforcement now replaces hard/soft commands |
 | `/board-soft <id>` | Deprecated compatibility no-op: accepted-item enforcement now replaces hard/soft commands |
 ```
 
-Also update “How it works” to say `/board-manage` is the primary TUI mutation UI, while item-targeted commands are kept for compatibility and power users.
+Also update “How it works” to say `/board-manage` is the primary TUI mutation UI for currently supported item actions, while item-targeted commands are kept for compatibility and power users. Do not advertise manager clear until Task 2 implements it.
 
 **Step 5: Run tests**
 
@@ -158,6 +159,8 @@ git commit -m "docs: make board manager primary"
 **Step 1: Write failing manager clear tests**
 
 Add tests near the existing board-manager tests in `tests/live-decision-board-extension.test.mjs`.
+
+Update the command-description tests to expect `/board-manage` and `/board-clear` to mention clear/prefer manager once the manager clear action exists.
 
 Test the help text:
 
@@ -256,11 +259,17 @@ if (data === "c") {
 }
 ```
 
-3. Update the help line:
+3. Update the `/board-manage` command description and help line now that clear exists:
+
+```ts
+description: "Primary UI for live board item actions: edit, accept/reject, supersede, or clear",
+```
 
 ```ts
 "↑↓/j/k select • enter/e edit • a accept • r reject/remove • u supersede • c clear • q/esc close"
 ```
+
+Also update the README primary command row and `/board-clear` fallback row to remove the temporary "after Task 2" qualifier.
 
 4. In `applyBoardManagerAction()`, handle clear before reading `action.id`:
 

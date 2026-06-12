@@ -22,9 +22,10 @@ pi -e .
 
 | Command | Purpose |
 | --- | --- |
-| `/board-manage` | Primary keyboard workflow for managing live board items |
-| `/assume <text>` | Add an accepted assumption |
-| `/decide <text>` | Add an accepted decision |
+| `/board-manage` | Primary keyboard workflow for selecting board items and editing, accepting/rejecting, or superseding them |
+| `/assume <text>` | Quick capture: add an accepted assumption |
+| `/decide <text>` | Quick capture: add an accepted decision |
+| `/board-cleanup` | Review active board items and archive obvious historical entries after confirmation |
 | `/board-snapshot` | Show the active board context snapshot as a visible message |
 | `/board-toggle` | Collapse or expand the persistent board body while keeping the summary line visible |
 
@@ -33,11 +34,10 @@ pi -e .
 | Command | Purpose |
 | --- | --- |
 | `/board` | Power-user editor for the live board markdown |
-| `/board-reject <id>` | Power-user fallback to reject an item |
-| `/board-accept <id>` | Power-user fallback to accept a proposed or rejected item |
-| `/board-supersede <id> <new text>` | Power-user fallback to supersede an item |
-| `/board-cleanup` | Review active board items and archive obvious historical entries after confirmation |
-| `/board-clear` | Power-user fallback to clear the board after confirmation |
+| `/board-reject <id>` | Power-user fallback to reject an item by id; prefer `/board-manage` |
+| `/board-accept <id>` | Power-user fallback to accept a proposed or rejected item by id; prefer `/board-manage` |
+| `/board-supersede <id> <new text>` | Power-user fallback to supersede an item by id; prefer `/board-manage` |
+| `/board-clear` | Power-user fallback to clear the board after confirmation; prefer `/board-manage` once manager clear is available |
 | `/board-hard <id>` | Deprecated compatibility no-op: accepted-item enforcement now replaces hard/soft commands |
 | `/board-soft <id>` | Deprecated compatibility no-op: accepted-item enforcement now replaces hard/soft commands |
 
@@ -59,7 +59,8 @@ Prompt guidance tells the model to record only assumptions and decisions that sh
 - Board state is persisted in Pi session custom entries and restored from the active branch.
 - The widget shows all active board items by default; `/board-toggle` collapses the body while keeping the summary line visible. Footer status is intentionally suppressed to avoid duplicate board summaries.
 - `/board-snapshot` records the active context view (accepted/proposed items plus board rules) as a visible message.
-- `/board-manage` is a TUI-only keyboard manager: `↑↓/j/k` select, `enter/e` edit, `a` accept, `r` reject/remove from the active board, `u` supersede, `q/esc` close.
+- `/board-manage` is the primary TUI mutation UI for existing board items: `↑↓/j/k` select, `enter/e` edit, `a` accept, `r` reject/remove from the active board, `u` supersede, `q/esc` close.
+- Item-targeted slash commands remain available as compatibility/power-user fallbacks for users who want to act by id, but the keyboard manager is the preferred workflow.
 - The `context` hook removes stale board-generated context and injects exactly one fresh board snapshot into provider requests.
 - User/discussion-loop edits while the agent is busy queue a steering message so the next model turn sees the updated board.
 - Accepted items are enforced in context and block stale `write`, `edit`, and non-read-only `bash` calls until the fresh board has been injected.

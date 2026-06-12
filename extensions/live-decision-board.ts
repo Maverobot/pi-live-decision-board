@@ -1337,7 +1337,7 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 	});
 
 	pi.registerCommand("board-manage", {
-		description: "Primary UI for live board item actions: edit, accept/reject, supersede, or clear",
+		description: "Primary UI for live board item actions: edit, accept/reject, or supersede",
 		handler: async (_args, ctx) => {
 			if (ctx.mode !== "tui") return ctx.ui.notify("/board-manage requires TUI mode", "error");
 			await manageBoard(ctx);
@@ -1409,7 +1409,7 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 	});
 
 	pi.registerCommand("board-clear", {
-		description: "Power-user fallback: clear the live board after confirmation; prefer /board-manage",
+		description: "Power-user fallback: clear the live board after confirmation",
 		handler: async (_args, ctx) => {
 			const baseEpoch = boardEpoch;
 			if (ctx.hasUI) {
