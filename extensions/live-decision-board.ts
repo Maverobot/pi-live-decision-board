@@ -333,6 +333,16 @@ function assertCleanupRecommendationFresh(item: BoardItem, recommendation: Clean
 	}
 }
 
+function formatCleanupImpactForConfirmation(impact: CleanupImpact): string {
+	return [
+		`Active items: ${impact.activeBefore} → ${impact.activeAfter}`,
+		`Hard constraints: ${impact.hardBefore} → ${impact.hardAfter}`,
+		`Archive: ${impact.archiveCount}`,
+		`Supersede: ${impact.supersedeCount}`,
+		"Apply selected cleanup changes?",
+	].join("\n");
+}
+
 export function formatBoardForPrompt(board: BoardState): string {
 	const active = activeBoardItems(board);
 	const assumptions = active.filter((item) => item.kind === "assumption");
@@ -1257,6 +1267,7 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 	}
 
 	async function cleanupBoard(ctx: ExtensionContext): Promise<void> {
+		const baseEpoch = boardEpoch;
 		const recommendations = recommendBoardCleanup(board);
 		if (recommendations.length === 0) {
 			ctx.ui.notify("No active board items to clean up", "info");
@@ -1267,7 +1278,25 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 			{ overlay: true, overlayOptions: { width: "90%", minWidth: 70, maxHeight: "80%" } },
 		);
 		if (result.type === "cancel") return;
-		ctx.ui.notify("Cleanup apply is not implemented yet", "warning");
+		if (boardEpoch !== baseEpoch) {
+			ctx.ui.notify("Live Decision Board changed while cleanup was open; rerun /board-cleanup on the latest board.", "warning");
+			return;
+		}
+
+		const actionableRecommendations = result.recommendations.filter((recommendation) => recommendation.selected && (recommendation.action === "archive" || recommendation.action === "supersede"));
+		if (actionableRecommendations.length === 0) {
+			ctx.ui.notify("Board cleanup: no selected changes", "info");
+			return;
+		}
+
+		const impact = summarizeBoardCleanupImpact(board, result.recommendations);
+		const confirmed = await ctx.ui.confirm("Apply Board Cleanup?", formatCleanupImpactForConfirmation(impact));
+		if (!confirmed) return;
+		if (boardEpoch !== baseEpoch) {
+			ctx.ui.notify("Live Decision Board changed while cleanup was open; rerun /board-cleanup on the latest board.", "warning");
+			return;
+		}
+		safeApplyBoard(ctx, "Cleaned board", () => applyBoardCleanup(board, result.recommendations));
 	}
 
 	pi.on("session_start", async (_event, ctx) => {

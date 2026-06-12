@@ -400,6 +400,304 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 }
 
 {
+	const cleanupCommands = new Map();
+	const cleanupEvents = new Map();
+	const cleanupEntries = [];
+	const cleanupCtx = {
+		mode: "tui",
+		hasUI: true,
+		isIdle: () => true,
+		sessionManager: { getBranch: () => [] },
+		ui: {
+			theme: { fg: (_color, text) => text },
+			setStatus: () => {},
+			setWidget: () => {},
+			notify: () => {},
+			confirm: async () => true,
+			editor: async (_title, initial) => initial,
+			custom: async () => ({ type: "cancel" }),
+		},
+	};
+
+	extension({
+		on(eventName, callback) {
+			cleanupEvents.set(eventName, callback);
+		},
+		registerCommand(name, def) {
+			cleanupCommands.set(name, def);
+		},
+		registerTool() {},
+		appendEntry(customType, data) {
+			cleanupEntries.push({ type: "custom", customType, data });
+		},
+		sendMessage() {},
+	});
+
+	await cleanupEvents.get("session_start")({}, cleanupCtx);
+	await cleanupCommands.get("decide").handler("Apply Round 11 review fixes", cleanupCtx);
+	const entriesBeforeCleanup = cleanupEntries.length;
+	await cleanupCommands.get("board-cleanup").handler("", cleanupCtx);
+	assert.equal(cleanupEntries.length, entriesBeforeCleanup, "cleanup cancel should persist nothing");
+}
+
+{
+	const cleanupCommands = new Map();
+	const cleanupEvents = new Map();
+	const cleanupEntries = [];
+	let latestNotification = "";
+	let confirmCalled = false;
+	const cleanupCtx = {
+		mode: "tui",
+		hasUI: true,
+		isIdle: () => true,
+		sessionManager: { getBranch: () => [] },
+		ui: {
+			theme: { fg: (_color, text) => text },
+			setStatus: () => {},
+			setWidget: () => {},
+			notify: (message) => {
+				latestNotification = message;
+			},
+			confirm: async () => {
+				confirmCalled = true;
+				return true;
+			},
+			editor: async (_title, initial) => initial,
+			custom: async (factory) => {
+				let result;
+				const component = factory({ requestRender: () => {} }, { fg: (_color, text) => text }, {}, (value) => {
+					result = value;
+				});
+				component.handleInput("\r");
+				return result;
+			},
+		},
+	};
+
+	extension({
+		on(eventName, callback) {
+			cleanupEvents.set(eventName, callback);
+		},
+		registerCommand(name, def) {
+			cleanupCommands.set(name, def);
+		},
+		registerTool() {},
+		appendEntry(customType, data) {
+			cleanupEntries.push({ type: "custom", customType, data });
+		},
+		sendMessage() {},
+	});
+
+	await cleanupEvents.get("session_start")({}, cleanupCtx);
+	await cleanupCommands.get("decide").handler("Core implementation constraint", cleanupCtx);
+	await cleanupCommands.get("board-hard").handler("D1", cleanupCtx);
+	latestNotification = "";
+	const entriesBeforeCleanup = cleanupEntries.length;
+	await cleanupCommands.get("board-cleanup").handler("", cleanupCtx);
+	assert.equal(confirmCalled, false, "cleanup should skip confirmation when no actionable selected changes");
+	assert.equal(latestNotification, "Board cleanup: no selected changes");
+	assert.equal(cleanupEntries.length, entriesBeforeCleanup, "no selected cleanup actions should persist nothing");
+}
+
+{
+	const cleanupCommands = new Map();
+	const cleanupEvents = new Map();
+	const cleanupEntries = [];
+	let confirmMessage = "";
+	let confirmTitle = "";
+	let latestNotification = "";
+	const cleanupCtx = {
+		mode: "tui",
+		hasUI: true,
+		isIdle: () => true,
+		sessionManager: { getBranch: () => [] },
+		ui: {
+			theme: { fg: (_color, text) => text },
+			setStatus: () => {},
+			setWidget: () => {},
+			notify: (message) => {
+				latestNotification = message;
+			},
+			confirm: async (title, message) => {
+				confirmTitle = title;
+				confirmMessage = message;
+				return true;
+			},
+			editor: async (_title, initial) => initial,
+			custom: async (factory) => {
+				let result;
+				const component = factory({ requestRender: () => {} }, { fg: (_color, text) => text }, {}, (value) => {
+					result = value;
+				});
+				component.handleInput("\r");
+				return result;
+			},
+		},
+	};
+
+	extension({
+		on(eventName, callback) {
+			cleanupEvents.set(eventName, callback);
+		},
+		registerCommand(name, def) {
+			cleanupCommands.set(name, def);
+		},
+		registerTool() {},
+		appendEntry(customType, data) {
+			cleanupEntries.push({ type: "custom", customType, data });
+		},
+		sendMessage() {},
+	});
+
+	await cleanupEvents.get("session_start")({}, cleanupCtx);
+	await cleanupCommands.get("decide").handler("Apply Round 11 historical cleanup", cleanupCtx);
+	await cleanupCommands.get("decide").handler("Core implementation constraint", cleanupCtx);
+	await cleanupCommands.get("board-hard").handler("D2", cleanupCtx);
+	const entriesBeforeCleanup = cleanupEntries.length;
+	await cleanupCommands.get("board-cleanup").handler("", cleanupCtx);
+	assert.equal(confirmTitle, "Apply Board Cleanup?");
+	assert.match(confirmMessage, /Active items:\s*2\s*→\s*1/i);
+	assert.match(confirmMessage, /Hard constraints:\s*1\s*→\s*1/i);
+	assert.match(confirmMessage, /Archive:\s*1/i);
+	assert.match(confirmMessage, /Supersede:\s*0/i);
+	assert.match(latestNotification, /Cleaned board/i);
+	assert.equal(cleanupEntries.length, entriesBeforeCleanup + 1, "confirmed board cleanup persists once");
+	assert.equal(cleanupEntries.at(-1).data.items.find((item) => item.id === "D1").status, "rejected");
+	assert(cleanupEntries.at(-1).data.items.find((item) => item.id === "D1"));
+}
+
+{
+	const cleanupCommands = new Map();
+	const cleanupEvents = new Map();
+	const cleanupEntries = [];
+	let confirmCalled = false;
+	let latestNotification = "";
+	const cleanupCtx = {
+		mode: "tui",
+		hasUI: true,
+		isIdle: () => true,
+		sessionManager: { getBranch: () => [] },
+		ui: {
+			theme: { fg: (_color, text) => text },
+			setStatus: () => {},
+			setWidget: () => {},
+			notify: (message) => {
+				latestNotification = message;
+			},
+			confirm: async () => {
+				confirmCalled = true;
+				return false;
+			},
+			editor: async (_title, initial) => initial,
+			custom: async (factory) => {
+				let result;
+				const component = factory({ requestRender: () => {} }, { fg: (_color, text) => text }, {}, (value) => {
+					result = value;
+				});
+				component.handleInput("\r");
+				return result;
+			},
+		},
+	};
+
+	extension({
+		on(eventName, callback) {
+			cleanupEvents.set(eventName, callback);
+		},
+		registerCommand(name, def) {
+			cleanupCommands.set(name, def);
+		},
+		registerTool() {},
+		appendEntry(customType, data) {
+			cleanupEntries.push({ type: "custom", customType, data });
+		},
+		sendMessage() {},
+	});
+
+	await cleanupEvents.get("session_start")({}, cleanupCtx);
+	await cleanupCommands.get("decide").handler("Apply Round 11 historical cleanup", cleanupCtx);
+	await cleanupCommands.get("decide").handler("Core implementation constraint", cleanupCtx);
+	await cleanupCommands.get("board-hard").handler("D2", cleanupCtx);
+	latestNotification = "";
+	const entriesBeforeCleanup = cleanupEntries.length;
+	await cleanupCommands.get("board-cleanup").handler("", cleanupCtx);
+	assert.equal(confirmCalled, true);
+	assert.equal(latestNotification, "");
+	assert.equal(cleanupEntries.length, entriesBeforeCleanup, "rejected confirmation should persist nothing");
+}
+
+{
+	const cleanupCommands = new Map();
+	const cleanupEvents = new Map();
+	const cleanupEntries = [];
+	let latestNotification = "";
+	let confirmCalled = false;
+	const localBranchEntries = [];
+	const cleanupCtx = {
+		mode: "tui",
+		hasUI: true,
+		isIdle: () => true,
+		sessionManager: { getBranch: () => localBranchEntries },
+		ui: {
+			theme: { fg: (_color, text) => text },
+			setStatus: () => {},
+			setWidget: () => {},
+			notify: (message) => {
+				latestNotification = message;
+			},
+			confirm: async () => {
+				confirmCalled = true;
+				return true;
+			},
+			editor: async (_title, initial) => initial,
+			custom: async (factory) => {
+				let result;
+				const component = factory({ requestRender: () => {} }, { fg: (_color, text) => text }, {}, (value) => {
+					result = value;
+				});
+				const baseBoard = cleanupEntries.at(-1).data;
+				const staleBoard = {
+					...baseBoard,
+					version: baseBoard.version + 1,
+					hardDecisionBarrierVersion: baseBoard.hardDecisionBarrierVersion,
+					items: baseBoard.items.map((item) => ({
+						...item,
+						text: `${item.text} (stale restore while cleanup open)`,
+					})),
+				};
+				localBranchEntries.length = 0;
+				localBranchEntries.push({ type: "custom", customType: "live-decision-board", data: staleBoard });
+				await cleanupEvents.get("session_tree")({}, cleanupCtx);
+				component.handleInput("\r");
+				return result;
+			},
+		},
+	};
+
+	extension({
+		on(eventName, callback) {
+			cleanupEvents.set(eventName, callback);
+		},
+		registerCommand(name, def) {
+			cleanupCommands.set(name, def);
+		},
+		registerTool() {},
+		appendEntry(customType, data) {
+			cleanupEntries.push({ type: "custom", customType, data });
+		},
+		sendMessage() {},
+	});
+
+	await cleanupEvents.get("session_start")({}, cleanupCtx);
+	await cleanupCommands.get("decide").handler("Apply Round 11 stale cleanup candidate", cleanupCtx);
+	const entriesBeforeCleanup = cleanupEntries.length;
+	await cleanupCommands.get("board-cleanup").handler("", cleanupCtx);
+	assert.equal(cleanupEntries.length, entriesBeforeCleanup, "stale cleanup should persist nothing");
+	assert.match(latestNotification, /changed while cleanup was open/i);
+	assert.equal(confirmCalled, false, "stale cleanup should not open confirmation");
+}
+
+{
 	const localCommands = new Map();
 	const localEvents = new Map();
 	const localEntries = [];
