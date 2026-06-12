@@ -565,6 +565,9 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 	assert.match(confirmMessage, /Hard constraints:\s*1\s*→\s*1/i);
 	assert.match(confirmMessage, /Archive:\s*1/i);
 	assert.match(confirmMessage, /Supersede:\s*0/i);
+	assert.match(confirmMessage, /Archive from active board:/i);
+	assert.match(confirmMessage, /\[D1] Apply Round 11 historical cleanup/);
+	assert.doesNotMatch(confirmMessage, /\[D2].*Core implementation constraint/, "confirmation should list only selected cleanup changes");
 	assert.match(latestNotification, /Cleaned board/i);
 	assert.equal(cleanupEntries.length, entriesBeforeCleanup + 1, "confirmed board cleanup persists once");
 	assert.equal(cleanupEntries.at(-1).data.items.find((item) => item.id === "D1").status, "rejected");

@@ -333,14 +333,31 @@ function assertCleanupRecommendationFresh(item: BoardItem, recommendation: Clean
 	}
 }
 
-function formatCleanupImpactForConfirmation(impact: CleanupImpact): string {
-	return [
+function formatCleanupImpactForConfirmation(impact: CleanupImpact, selectedRecommendations: CleanupRecommendation[]): string {
+	const archiveRecommendations = selectedRecommendations.filter((recommendation) => recommendation.action === "archive");
+	const supersedeRecommendations = selectedRecommendations.filter((recommendation) => recommendation.action === "supersede");
+	const lines = [
 		`Active items: ${impact.activeBefore} → ${impact.activeAfter}`,
 		`Hard constraints: ${impact.hardBefore} → ${impact.hardAfter}`,
 		`Archive: ${impact.archiveCount}`,
 		`Supersede: ${impact.supersedeCount}`,
-		"Apply selected cleanup changes?",
-	].join("\n");
+	];
+	if (archiveRecommendations.length > 0) {
+		lines.push("", "Archive from active board:", ...archiveRecommendations.map(formatCleanupArchiveConfirmationItem));
+	}
+	if (supersedeRecommendations.length > 0) {
+		lines.push("", "Supersede:", ...supersedeRecommendations.map(formatCleanupSupersedeConfirmationItem));
+	}
+	lines.push("", "Apply selected cleanup changes?");
+	return lines.join("\n");
+}
+
+function formatCleanupArchiveConfirmationItem(recommendation: CleanupRecommendation): string {
+	return `- [${recommendation.id}] ${recommendation.observedText}`;
+}
+
+function formatCleanupSupersedeConfirmationItem(recommendation: CleanupRecommendation): string {
+	return `- [${recommendation.id}] ${recommendation.observedText} → ${recommendation.replacementText ?? "replacement text"}`;
 }
 
 export function formatBoardForPrompt(board: BoardState): string {
@@ -1301,7 +1318,7 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 		}
 
 		const impact = summarizeBoardCleanupImpact(board, result.recommendations);
-		const confirmed = await ctx.ui.confirm("Apply Board Cleanup?", formatCleanupImpactForConfirmation(impact));
+		const confirmed = await ctx.ui.confirm("Apply Board Cleanup?", formatCleanupImpactForConfirmation(impact, actionableRecommendations));
 		if (!confirmed) return;
 		if (boardEpoch !== baseEpoch) {
 			ctx.ui.notify("Live Decision Board changed while cleanup was open; rerun /board-cleanup on the latest board.", "warning");
