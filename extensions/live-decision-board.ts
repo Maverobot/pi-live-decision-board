@@ -644,20 +644,16 @@ function formatBoardStatusForWidget(board: BoardState, theme: Theme): string {
 function formatBoardWidgetText(board: BoardState, theme: Theme, options: { collapsed?: boolean } = {}): string {
 	if (options.collapsed) return formatBoardStatusForWidget(board, theme);
 	const [, ...bodyLines] = formatBoardWidget(board);
-	return [renderBoardSeparator(theme), formatBoardStatusForWidget(board, theme), ...bodyLines.map((line) => colorizeWidgetLine(line, theme))].join("\n");
-}
-
-function renderBoardSeparator(theme: Theme): string {
-	return `${theme.fg("dim", "────────────────")} ${theme.fg("accent", "Live Decision Board")} ${theme.fg("dim", "────────────────")}`;
+	return [formatBoardStatusForWidget(board, theme), ...bodyLines.map((line) => colorizeWidgetLine(line, theme))].join("\n");
 }
 
 function colorizeWidgetLine(line: string, theme: Theme): string {
 	const section = /^(Decisions|Assumptions) \((\d+)\)$/.exec(line);
-	if (section) return `${theme.fg("accent", section[1])} ${theme.fg("muted", `(${section[2]})`)}`;
+	if (section) return `  ${theme.fg("accent", section[1])} ${theme.fg("muted", `(${section[2]})`)}`;
 
 	const item = /^([!•]) \[([AD]\d+)] (.*)$/.exec(line);
 	if (!item) return line;
-	return `${theme.fg("dim", "•")} ${theme.fg("accent", `[${item[2]}]`)} ${theme.fg("muted", item[3])}`;
+	return `    ${theme.fg("dim", "•")} ${theme.fg("accent", `[${item[2]}]`)} ${theme.fg("muted", item[3])}`;
 }
 
 export function formatBoardWidget(board: BoardState, options: { maxItems?: number } = {}): string[] {

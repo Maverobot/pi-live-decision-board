@@ -61,7 +61,7 @@ Prompt guidance tells the model to record only assumptions and decisions that sh
 ## How it works
 
 - Board state is persisted in Pi session custom entries and restored from the active branch.
-- The widget shows all active board items by default; `/board-toggle` collapses the body while keeping the summary line visible. Footer status is intentionally suppressed to avoid duplicate board summaries.
+- The widget shows a compact summary followed by indented Decisions/Assumptions sections with all active items by default; `/board-toggle` collapses the body while keeping the summary line visible. Footer status and titled separator lines are intentionally suppressed to avoid duplicate or noisy board chrome.
 - `/board-snapshot` records the active context view (accepted/proposed items plus board rules) as a visible message.
 - `/board-manage` is the primary TUI mutation UI for existing board items: `↑↓/j/k` select, `enter/e` edit, `a` accept, `r` reject/remove from the active board, `u` supersede, `c` clear, `q/esc` close.
 - Item-targeted slash commands remain available as compatibility/power-user fallbacks for users who want to act by id, but the keyboard manager is the preferred workflow.
