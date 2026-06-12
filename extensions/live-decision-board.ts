@@ -950,12 +950,13 @@ class BoardCleanupComponent {
 		private readonly requestRender: () => void,
 	) {
 		this.recommendations = recommendations
-			.map((recommendation) => ({ ...recommendation }))
+			.map((recommendation, index) => ({ recommendation: { ...recommendation }, index }))
 			.sort((left, right) => {
-				const actionOrder = this.actionOrder(left.action) - this.actionOrder(right.action);
+				const actionOrder = this.actionOrder(left.recommendation.action) - this.actionOrder(right.recommendation.action);
 				if (actionOrder !== 0) return actionOrder;
-				return left.id.localeCompare(right.id);
-			});
+				return left.index - right.index;
+			})
+			.map(({ recommendation }) => recommendation);
 	}
 
 	handleInput(data: string): void {
@@ -1043,11 +1044,14 @@ class BoardCleanupComponent {
 		const cursor = selected ? this.theme.fg("accent", ">") : " ";
 		const checkbox = recommendation.selected ? this.theme.fg("success", "[x]") : this.theme.fg("dim", "[ ]");
 		const id = this.theme.fg("accent", `[${recommendation.id}]`);
+		const statusColor = recommendation.observedStatus === "accepted" ? "success" : recommendation.observedStatus === "proposed" ? "warning" : "dim";
+		const status = this.theme.fg(statusColor, recommendation.observedStatus);
+		const strength = recommendation.observedStrength === "hard" ? this.theme.fg("warning", recommendation.observedStrength) : this.theme.fg("dim", recommendation.observedStrength);
 		const action = this.theme.fg("warning", this.actionLabel(recommendation.action));
 		const risk = this.theme.fg("muted", recommendation.riskLevel);
 		const text = this.theme.fg("muted", recommendation.observedText);
 		return {
-			main: truncateToWidth(`${cursor} ${checkbox} ${id} ${action} • ${risk} • ${text}`, width),
+			main: truncateToWidth(`${cursor} ${checkbox} ${id} ${status}/${strength} ${action} • ${risk} • ${text}`, width),
 			reason: truncateToWidth(this.theme.fg("dim", `  ${recommendation.reason}`), width),
 		};
 	}

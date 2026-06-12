@@ -382,12 +382,18 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 	await cleanupCommands.get("decide").handler("Apply Round 5 review fixes", cleanupCtx);
 	await cleanupCommands.get("decide").handler("Core implementation constraint", cleanupCtx);
 	await cleanupCommands.get("board-hard").handler("D2", cleanupCtx);
+	for (let index = 3; index <= 10; index += 1) {
+		await cleanupCommands.get("decide").handler(`Apply Round ${index} review fixes`, cleanupCtx);
+	}
 	await cleanupCommands.get("board-cleanup").handler("", cleanupCtx);
 	assert.match(cleanupRendered[0], /Board Cleanup/);
 	assert.match(cleanupRendered[0], /Archive from active board/);
 	assert.match(cleanupRendered[0], /Apply Round 5/);
+	assert.match(cleanupRendered[0], /accepted\/soft/);
+	assert.match(cleanupRendered[0], /accepted\/hard/);
 	assert.match(cleanupRendered[0], /Hard constraints are kept by default/);
 	assert.match(cleanupRendered[0], /space toggle/);
+	assert(cleanupRendered[0].indexOf("[D3]") < cleanupRendered[0].indexOf("[D10]"), "cleanup preserves numeric board order within action groups");
 	assert.notEqual(cleanupRendered[1], cleanupRendered[0], "j changes selection");
 	assert.notEqual(cleanupRendered[3], cleanupRendered[2], "space toggles selected action");
 	assert.equal(cleanupResult.type, "cancel");
