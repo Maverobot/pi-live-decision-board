@@ -344,10 +344,10 @@ Proposed guidance:
 - Use =hard= only for explicit user constraints or safety-critical rules that should block stale mutations.
 - If the board is becoming historical/noisy, suggest =/board-cleanup=; do not add a board item saying cleanup happened.
 
-* Local cleanup heuristics for MVP
-Local heuristics should be conservative and explainable.
+* Local cleanup heuristics
+Local heuristics should be conservative and explainable. The MVP uses only archive, keep, and needs-review recommendations; supersede suggestions are deferred until a later workflow can edit replacement text safely.
 
-** Suggest archive when soft accepted text looks historical
+** MVP: suggest archive when soft accepted text looks historical
 Examples:
 
 - starts with "Implement ..." and the feature exists/docs mention it
@@ -356,13 +356,7 @@ Examples:
 - describes a command rename or UI behavior already documented in README
 - says "use X for this session/overnight" and task is complete
 
-** Suggest supersede when wording is historical but principle remains useful
-Examples:
-
-- "After the next review round, start keyboard manager..." -> "Use keyboard-first board management; avoid mouse-only editing unless Pi documents mouse support."
-- Multiple UI rendering decisions -> one current product rule.
-
-** Keep by default when uncertain
+** MVP: keep by default when uncertain
 Especially for:
 
 - user preferences
@@ -370,6 +364,12 @@ Especially for:
 - open product direction
 - safety constraints
 - items with unclear status
+
+** Deferred: suggest supersede when wording is historical but principle remains useful
+Examples:
+
+- "After the next review round, start keyboard manager..." -> "Use keyboard-first board management; avoid mouse-only editing unless Pi documents mouse support."
+- Multiple UI rendering decisions -> one current product rule.
 
 * Subagent-assisted cleanup design
 Subagent cleanup should recommend, never apply.
