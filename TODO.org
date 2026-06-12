@@ -14,3 +14,7 @@
 - [x] Rename `/board-show` to `/board-snapshot` so message snapshots are explicit.
 - [x] Add `/board-manage` keyboard UI for selecting and updating board items.
 - [x] Show all active board items in the visible widget and make `/board-toggle` collapse to the summary line.
+
+- [x] In which cases is an item made "hard"? Documented as enforced constraints only: explicit user constraints, safety-critical rules, architecture boundaries, or decisions that should block stale mutating tools.
+
+- [ ] Why do we need "v18" in "Board • v18 • 4 assumptions • 11 decisions • 0 hard constraints"?

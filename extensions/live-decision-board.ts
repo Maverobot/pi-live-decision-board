@@ -198,8 +198,9 @@ export function formatBoardForPrompt(board: BoardState): string {
 	const lines = [`## Live Assumptions & Decisions — version ${board.version}`, ""];
 	lines.push("Rules:");
 	lines.push("- Treat hard accepted decisions as constraints before mutating files.");
+	lines.push("- Hard means an enforced constraint: use it only for user-stated constraints, safety-critical rules, or decisions that should block stale mutating tools; do not use hard merely to mean important.");
 	lines.push("- If current work conflicts with this board, reconcile before continuing.");
-	lines.push("- Record meaningful new assumptions or decisions with the decision_board tool.", "");
+	lines.push("- Record only assumptions or decisions that should affect future behavior; do not use the board as an implementation log.", "");
 	lines.push("Assumptions:");
 	lines.push(...(assumptions.length ? assumptions.map(formatPromptItem) : ["- none"]));
 	lines.push("", "Decisions:");
@@ -1019,7 +1020,7 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 	});
 
 	pi.registerCommand("board-hard", {
-		description: "Mark a board item hard: /board-hard A1",
+		description: "Mark an item as an enforced hard constraint: /board-hard A1",
 		handler: async (args, ctx) => {
 			safeApplyBoard(ctx, "Marked hard", () => updateBoardItem(board, args.trim(), { strength: "hard" }));
 		},
@@ -1098,8 +1099,10 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 		description: "List or update the live assumptions/decisions board.",
 		promptSnippet: "List or update live assumptions and decisions for the current project.",
 		promptGuidelines: [
-			"Use decision_board when you make a meaningful project assumption or implementation decision.",
+			"Use decision_board only for currently actionable assumptions or decisions that should affect future behavior.",
 			"Use decision_board before acting on a decision that is not already recorded in the live board.",
+			"Do not use decision_board as an implementation log for progress updates, tests run, files changed, or completed review batches.",
+			"Use hard only for explicit user constraints, safety-critical rules, or decisions that should block stale mutating tools; do not use hard merely to mean important.",
 		],
 		executionMode: "sequential",
 		parameters: Type.Object({

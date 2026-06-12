@@ -26,8 +26,8 @@ pi -e .
 | `/board-manage` | Open a keyboard UI to select, edit, accept/reject, harden/soften, or supersede board items |
 | `/assume <text>` | Add an accepted soft assumption |
 | `/decide <text>` | Add an accepted soft decision |
-| `/board-hard <id>` | Mark an item as hard |
-| `/board-soft <id>` | Mark an item as soft |
+| `/board-hard <id>` | Mark an item as an enforced hard constraint |
+| `/board-soft <id>` | Mark an item as non-enforced soft guidance |
 | `/board-reject <id>` | Reject an item |
 | `/board-accept <id>` | Accept a proposed or rejected item |
 | `/board-supersede <id> <new text>` | Supersede an item and create a replacement |
@@ -44,7 +44,7 @@ The extension registers a `decision_board` tool with actions:
 - `set_strength`
 - `supersede`
 
-Prompt guidance tells the model to record meaningful assumptions and implementation decisions before relying on them.
+Prompt guidance tells the model to record only assumptions and decisions that should affect future behavior, not routine implementation progress.
 
 ## How it works
 
@@ -70,6 +70,19 @@ Prompt guidance tells the model to record meaningful assumptions and implementat
 Valid statuses: `proposed`, `accepted`, `rejected`, `superseded`.
 
 Valid strengths: `soft`, `hard`.
+
+## Soft vs hard items
+
+Use `soft` for normal guidance: preferences, assumptions, and decisions the agent should consider but that should not block tool use.
+
+Use `hard` only for enforced constraints:
+
+- explicit user-stated constraints,
+- safety-critical rules,
+- architectural boundaries that must not be violated,
+- decisions that should block stale mutating tools until the model has seen the latest board.
+
+Do **not** use `hard` merely to mean "important". A hard accepted item participates in stale-mutation protection: if it changes, mutating tools such as `write`, `edit`, and unsafe `bash` are blocked until the fresh board has been injected into model context.
 
 ## Development
 

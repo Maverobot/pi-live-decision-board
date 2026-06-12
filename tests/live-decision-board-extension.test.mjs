@@ -62,6 +62,10 @@ assert.equal(commands.has("board-show"), false, "board-show should be renamed to
 assert.match(commands.get("board-snapshot").description, /active context snapshot/, "board-snapshot should describe the active context view it records");
 assert.equal(registeredTool.name, "decision_board", "decision_board tool should be registered");
 assert.equal(registeredTool.executionMode, "sequential", "decision_board runs sequentially before later tool preflights");
+assert(
+	registeredTool.promptGuidelines.some((line) => line.includes("Use hard only")),
+	"decision_board prompt guidance should explain when hard is appropriate",
+);
 
 const testTheme = {
 	fg: (color, text) => `<${color}>${text}</${color}>`,

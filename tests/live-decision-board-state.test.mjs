@@ -41,6 +41,7 @@ assert.match(prompt, /Live Assumptions & Decisions — version 2/);
 assert.match(prompt, /A1: Backend uses Node 22/);
 assert.match(prompt, /D1: Build as a Pi extension first/);
 assert.match(prompt, /hard/);
+assert.match(prompt, /Hard means an enforced constraint/, "prompt guidance explains when hard is appropriate");
 
 const widgetDecisionOne = mod.addBoardItem(withAssumption, {
 	kind: "decision",

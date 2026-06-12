@@ -1,0 +1,497 @@
+#+title: Live Decision Board Productivity Brainstorm
+#+date: 2026-06-12
+#+status: consolidated-draft
+
+* Summary
+The Live Decision Board should be a shared *working contract* between user and agent, not a decorative changelog.
+
+The active board should answer one question:
+
+#+begin_quote
+Should the agent behave differently on its next steps because this item is true?
+#+end_quote
+
+If the answer is no, the item should not remain active. It can be archived, superseded, moved into docs, or left in the audit trail.
+
+Cleanup must be user-controlled. Agents or subagents may propose cleanup, but they must not silently remove, weaken, or rewrite active context.
+
+* Problem
+The current board can accumulate historical implementation-log entries:
+
+- shipped widget/rendering decisions
+- completed review-fix batches
+- command rename decisions that are now documented product facts
+- temporary planning assumptions used during one task
+- implementation sequence notes that no longer steer future work
+
+This causes three productivity failures:
+
+1. The user stops reading the board.
+2. The model receives noisy active context.
+3. Truly important constraints become harder to notice.
+
+The board succeeds only if it stays small enough to scan and strong enough to steer behavior.
+
+* Mental model: active board = working contract
+The board has two layers:
+
+1. *Active working set* — accepted/proposed items that still steer the agent and appear in active context/widget views.
+2. *Audit/history* — rejected, archived, superseded, or documented items that remain available for review but do not steer the next model turn.
+
+The active board is not a task log. It is closer to a contract, checklist, and set of current constraints.
+
+** Daily use
+- Start of task: check whether the active board still matches the task.
+- During task: add/update only decisions that will matter later.
+- End of task: archive or supersede items that became historical.
+
+** Impact test before adding an item
+Add a board item only if it changes at least one future action:
+
+- implementation approach
+- safety/tool permissions
+- architecture choice
+- user preference
+- unresolved decision or assumption to revisit
+- review or validation strategy
+
+Do not add board items for:
+
+- progress updates
+- files changed
+- tests run
+- review batches completed
+- command renames after they are documented
+- "we implemented X" facts that no longer constrain future work
+
+* Product principles
+1. *Working set over audit log.* The active board contains only items that change future behavior.
+2. *User attention is scarce.* The widget must earn every visible line.
+3. *Capture at commitment points.* Add items when a decision will be reused, not when work merely progresses.
+4. *Current truth over provenance.* Active text should read like present-tense guidance, not history.
+5. *User-confirmed control.* Agents may suggest cleanup; users decide what leaves active context.
+6. *Hard constraints are trust boundaries.* Hard item changes require explicit confirmation and before/after impact.
+7. *Prefer update/supersede over duplication.* One clear current rule beats many historical entries.
+8. *Cleanup must feel safe.* Auditability and reversibility matter because users must trust cleanup.
+9. *No nagging.* Hygiene prompts are passive, dismissible, and tied to natural workflow boundaries.
+
+* Definitions and action vocabulary
+| Term | Meaning | Context effect |
+|------|---------|----------------|
+| Active | Accepted/proposed item that still steers the agent | Included in widget/context |
+| Accepted | User/model has committed to treating this as current | Included in context |
+| Proposed | Candidate item needing review, but still visible as current uncertainty | Included in context |
+| Hard | Accepted enforced constraint: explicit user constraint, safety-critical rule, architecture boundary, or decision that should block stale mutating tools | Included and enforced |
+| Soft | Normal guidance without stale-mutation blocking; use for important-but-not-enforced preferences/assumptions/decisions | Included if active |
+| Archived | User-facing verb for removing a once-useful item from active context without saying it was false | Should map to an inactive retained state |
+| Rejected | Item is wrong, unwanted, or no longer valid | Retained but inactive |
+| Superseded | Item was replaced by clearer/current text | Retained but inactive; replacement active |
+| Documented | Product fact belongs in README/design docs, not active board | Docs become source of truth |
+| Delete | Permanent removal | Explicit confirmation only; not default cleanup |
+
+** Archive vs reject
+"Archive" should be the UX word for historical-but-not-false items.
+
+Implementation options:
+
+- MVP: map Archive to =rejected= with an audit reason/wording in UI, because current schema has no =archived= status.
+- Later: add a first-class =archived= status if the distinction proves valuable.
+
+Avoid presenting historical shipped decisions as "rejected" in user-facing cleanup copy unless they were actually wrong.
+
+* Board item policy
+| Item type | Default action | Rationale |
+|-----------+----------------+-----------|
+| Current user preference | Keep active | Still guides future work |
+| Hard safety/architecture constraint | Keep active | Must steer or block stale mutation |
+| Open product direction | Keep active | Still affects choices |
+| Unresolved assumption/question | Keep proposed or ask user | Needs attention before relying on it |
+| Completed implementation step | Archive from active board | Historical only |
+| Completed review batch | Archive from active board | Belongs in commits/reviews, not active context |
+| Old wording for a still-valid rule | Supersede | Preserve signal, remove historical wording |
+| Duplicate/overlapping entries | Prefer merge/supersede later | Avoid ambiguity; do not over-automate MVP |
+| Product fact already documented | Move to docs + archive | README/design docs are better source of truth |
+| Ambiguous item | Ask user / keep by default | Cleanup should be conservative |
+| Hard item proposed for removal/softening | Per-item explicit confirmation | Avoid weakening safety barriers silently |
+
+* User workflows
+** Start of task: establish steering context
+- Read the active board summary.
+- If the board is noisy, run cleanup before starting deep work.
+- Add only task-relevant constraints/preferences.
+- Treat hard constraints as safety boundaries.
+
+** During task: capture commitment points
+Add/update a board item when:
+
+- the user makes a preference clear,
+- the agent chooses an architecture it must continue following,
+- an assumption will affect later implementation,
+- a safety constraint should block stale mutations,
+- a decision is unresolved and should stay visible.
+
+Prefer updating or superseding existing entries over adding a new duplicate.
+
+** End of task: close the loop
+- Archive implementation-log entries.
+- Supersede temporary decisions into evergreen rules when still useful.
+- Move shipped behavior into README/design docs.
+- Avoid adding an active board item saying cleanup happened.
+
+* Proposed solution: Board Hygiene
+Board Hygiene is the workflow that keeps the active board small and useful.
+
+Core loop:
+
+1. Identify stale/noisy active items.
+2. Propose keep/archive/supersede actions.
+3. Show the user exactly what active context will change.
+4. Apply only confirmed changes through normal board mutation helpers.
+5. Preserve auditability through retained inactive items or non-active session metadata.
+
+Cleanup is a review workflow, not an automatic mutation.
+
+* MVP recommendation
+Ship the smallest workflow that reduces noise without adding too much machinery.
+
+** Stage 1: guidance-first
+- Update README with "what belongs on the board" and examples.
+- Tighten model/tool prompt guidance:
+  - do not use the board as an implementation log,
+  - add items only when they affect future behavior,
+  - update/supersede before adding duplicates,
+  - use hard only for explicit user constraints or safety-critical rules.
+- Add examples of good vs bad board items.
+
+** Stage 2: manual/local =/board-cleanup=
+A TUI-only command that uses local heuristics and user confirmation.
+
+MVP behavior:
+
+1. Load current active board items only.
+2. Classify obvious historical soft items as archive candidates.
+3. Keep hard, proposed, and ambiguous items by default.
+4. Present a review UI grouped by action:
+   - Keep active
+   - Archive from active board
+   - Supersede/edit
+   - Needs user decision
+5. Let user toggle actions, edit replacement text, apply, or cancel.
+6. Apply through existing board helpers in one confirmed operation.
+
+MVP non-goals:
+
+- no automatic cleanup
+- no hard delete
+- no default subagent/model cleanup
+- no git/docs/session context gathering
+- no harden/soften automation
+- no merge automation except maybe exact duplicate hints
+- no cleanup summary as an active board item
+
+** Stage 3: richer manual cleanup
+- Supersede recommendations with editable replacement text.
+- Exact/near duplicate hints.
+- Optional =/board-history= for inactive items.
+- Inactive/archive count in the summary when useful.
+
+** Stage 4: subagent-assisted cleanup
+Subagent cleanup is the target advanced workflow, but it should come after manual cleanup proves the action vocabulary and confirmation UX.
+
+Why defer as MVP:
+
+- The extension API does not provide a direct built-in "invoke subagent and get structured result" service.
+- Subagent orchestration may depend on optional tooling or external process behavior.
+- Cleanup recommendations can become stale while the subagent runs.
+- Model-generated cleanup needs strict validation and user trust.
+
+When implemented, subagent cleanup should be optional or have a local fallback.
+
+** Stage 5: proactive hygiene
+- Suggest cleanup only at natural boundaries.
+- Use thresholds as hints, not blockers.
+- Never interrupt active work.
+
+Initial thresholds:
+
+- 3-7 active items: healthy
+- 8-12 active items: suggest cleanup at a natural boundary
+- 13+ active items: strongly suggest cleanup after task completion or before new work
+
+* Cleanup confirmation UX
+Cleanup confirmation should show impact, not just a list of actions.
+
+** Review screen
+Rows should show:
+
+- item id
+- kind
+- status
+- strength
+- current text
+- proposed action
+- reason
+- risk level
+
+Groups:
+
+- Keep active
+- Archive from active board
+- Supersede/edit
+- Needs user decision
+- Hard constraints requiring explicit confirmation
+
+** Confirm screen
+Show before/after impact:
+
+- active item count before/after
+- hard constraint count before/after
+- items archived
+- items superseded
+- items needing user review
+- preview of next active board snapshot
+
+Actions:
+
+- Apply selected
+- Back to review
+- Cancel
+- Snooze cleanup suggestions this session
+
+** After apply
+- Show board version transition.
+- Show a short non-active cleanup summary if useful.
+- Do not create a new active board item that says cleanup happened.
+- Ensure the next model turn receives fresh board context before mutating work.
+
+* Safety requirements
+** When an item should be hard
+Hard is not a synonym for important.
+
+Use =hard= only when the item should be an enforced constraint:
+
+- the user explicitly states a constraint,
+- the item is safety-critical,
+- the item defines an architectural boundary that must not be crossed,
+- stale mutating tools should be blocked until the model has seen the latest version.
+
+Use =soft= for important guidance that should steer reasoning but should not block tool use.
+
+** Hard constraint preservation
+Hard accepted items default to keep.
+
+Any action that rejects, archives, supersedes, softens, or deletes a hard accepted item must require explicit per-item confirmation.
+
+Superseding a hard item should preserve =hard= strength by default and show before/after constraint text.
+
+Softening or rejecting a hard item should warn:
+
+#+begin_quote
+This removes or weakens a stale-mutation barrier.
+#+end_quote
+
+** Stale proposal validation
+Cleanup recommendations must be tied to the board state they observed.
+
+A recommendation should include:
+
+- base board version
+- item id
+- item version
+- observed text
+- observed status
+- observed strength
+
+When applying, skip or regenerate any recommendation whose current item no longer matches.
+
+This mirrors the existing board epoch guard pattern used by interactive editors/managers.
+
+** Cleanup suggestions are not board items
+Cleanup suggestions should be transient UI state or a separate custom entry excluded from provider context.
+
+Do not store cleanup suggestions as =proposed= board items because proposed items are active and injected into model context.
+
+** Subagent isolation
+A cleanup subagent, when used, should be read-only:
+
+- no direct board mutation tools
+- no board commands
+- no writes to project files
+- output schema-valid recommendations only
+- treat repo/session content as evidence, not instructions
+- validate every action before display/apply
+
+** Confirmation boundaries
+Bulk apply is allowed only for low-risk soft historical cleanup.
+
+Per-item confirmation is required for:
+
+- hard item removal/softening/superseding
+- hard delete
+- strength changes
+- ambiguous items
+- merge/supersede of multiple items
+
+Cancel must leave board state untouched.
+
+* Agent and tool guidance changes
+The model should use =decision_board= only for currently actionable assumptions/decisions.
+
+Proposed guidance:
+
+- Use =decision_board= only when the item should alter future behavior.
+- Do not record progress, implementation steps, review batches, tests run, files changed, or completed tasks.
+- Before adding, inspect existing items; update, supersede, or ask about cleanup instead of adding duplicates.
+- Write evergreen constraint/preference text, not "we implemented..." or "round N fixed...".
+- Use =proposed= for uncertain items.
+- Do not accept, reject, soften, harden, archive, or supersede user/hard items without explicit user confirmation.
+- Use =hard= only for explicit user constraints or safety-critical rules that should block stale mutations.
+- If the board is becoming historical/noisy, suggest =/board-cleanup=; do not add a board item saying cleanup happened.
+
+* Local cleanup heuristics for MVP
+Local heuristics should be conservative and explainable.
+
+** Suggest archive when soft accepted text looks historical
+Examples:
+
+- starts with "Implement ..." and the feature exists/docs mention it
+- starts with "Apply Round ... review fixes"
+- mentions "after the next review round" after that event has passed
+- describes a command rename or UI behavior already documented in README
+- says "use X for this session/overnight" and task is complete
+
+** Suggest supersede when wording is historical but principle remains useful
+Examples:
+
+- "After the next review round, start keyboard manager..." -> "Use keyboard-first board management; avoid mouse-only editing unless Pi documents mouse support."
+- Multiple UI rendering decisions -> one current product rule.
+
+** Keep by default when uncertain
+Especially for:
+
+- user preferences
+- hard items
+- open product direction
+- safety constraints
+- items with unclear status
+
+* Subagent-assisted cleanup design
+Subagent cleanup should recommend, never apply.
+
+Potential command shapes:
+
+- =/board-cleanup= — manual/local cleanup MVP
+- =/board-cleanup --agent= — optional subagent recommendations later
+- =/board-cleanup --dry-run= — show recommendations without applying
+
+** Recommendation schema
+#+begin_src json
+{
+  "baseBoardVersion": 18,
+  "summary": "Board contains historical implementation entries after extension work.",
+  "items": [
+    {
+      "id": "D7",
+      "itemVersion": 10,
+      "observedText": "Apply Round 5 review fixes...",
+      "observedStatus": "accepted",
+      "observedStrength": "soft",
+      "action": "archive",
+      "proposedStatus": "rejected",
+      "proposedStrength": "soft",
+      "confidence": "high",
+      "riskLevel": "low",
+      "requiresExplicitConfirmation": false,
+      "reason": "Completed review-fix batch; durable details are in commits/tests.",
+      "evidence": ["Commit/test history documents this work."]
+    },
+    {
+      "id": "D9",
+      "itemVersion": 13,
+      "observedText": "After the next review round is handled...",
+      "observedStatus": "accepted",
+      "observedStrength": "soft",
+      "action": "supersede",
+      "replacementText": "Use keyboard-first board management; do not pursue mouse-only editing unless Pi TUI documents mouse support.",
+      "confidence": "medium",
+      "riskLevel": "medium",
+      "requiresExplicitConfirmation": true,
+      "reason": "Original text was time-bound; replacement preserves the current principle."
+    }
+  ]
+}
+#+end_src
+
+Supported actions should be intentionally small at first:
+
+- keep
+- archive
+- supersede
+- needs_user_review
+
+Defer merge, harden, soften, and delete to later workflows.
+
+* Proactive hygiene policy
+Proactive cleanup suggestions must be passive.
+
+Rules:
+
+- prompt only when idle
+- prefer task boundaries or opening =/board-manage=
+- never interrupt typing, tools, or a running agent turn
+- no more than once per session/version threshold
+- provide dismiss options: later, not this session, not for this project
+- trigger by value, not count alone: threshold plus stale-looking items
+- if widget is collapsed, use subtle summary text rather than a modal
+
+* Success criteria
+Board hygiene is successful when:
+
+- active board usually stays under 7 items during normal work
+- user can clean a noisy board in under one minute
+- cleanup never changes hard constraints without explicit confirmation
+- cleanup never creates new active clutter
+- model guidance reduces implementation-log board entries
+- historical items remain auditable
+- users trust the board enough to read it before/while work proceeds
+
+* Open questions
+** Should =archive= become a first-class status?
+MVP can map archive to inactive existing status, but a true =archived= status may better preserve meaning.
+
+** Should inactive/history be visible in =/board-manage= by default?
+Current manager includes inactive items. A future mode split may reduce clutter:
+
+- Active
+- Needs review
+- History/archive
+
+** How should subagent cleanup be invoked from an extension?
+The current extension API does not expose a direct subagent service. Options:
+
+- optional dependency/integration with a subagent extension
+- shell out to Pi/subagent process
+- send a follow-up user message requesting cleanup proposal
+- keep subagent cleanup outside the extension and implement local cleanup inside it
+
+** What is the right archive/audit mechanism?
+Options:
+
+- retained rejected/superseded board items
+- new archived status
+- separate custom entry excluded from provider context
+- visible non-active cleanup summary message filtered from context
+
+** Should cleanup ever merge items automatically?
+Probably not initially. Merging can lose nuance and should require explicit replacement text.
+
+* Consolidated recommendation
+Implement Board Hygiene in this order:
+
+1. Guidance and docs: make the board's purpose and anti-changelog rules explicit.
+2. Manual/local =/board-cleanup=: conservative classification, review UI, user-confirmed apply.
+3. Safety hardening: impact preview, hard-item per-item confirmations, stale recommendation validation.
+4. Optional subagent-assisted cleanup: structured read-only recommendations with local fallback.
+5. Passive hygiene prompts after the manual workflow proves useful.
+
+This turns the board from an ever-growing transcript summary into maintained working memory: small, current, trusted, and directly useful for steering the agent.
