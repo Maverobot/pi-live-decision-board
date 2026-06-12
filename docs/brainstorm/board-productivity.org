@@ -70,19 +70,20 @@ Do not add board items for:
 3. *Capture at commitment points.* Add items when a decision will be reused, not when work merely progresses.
 4. *Current truth over provenance.* Active text should read like present-tense guidance, not history.
 5. *User-confirmed control.* Agents may suggest cleanup; users decide what leaves active context.
-6. *Hard constraints are trust boundaries.* Hard item changes require explicit confirmation and before/after impact.
+6. *Accepted items are trust boundaries.* Accepted-item changes require explicit confirmation and before/after impact.
 7. *Prefer update/supersede over duplication.* One clear current rule beats many historical entries.
 8. *Cleanup must feel safe.* Auditability and reversibility matter because users must trust cleanup.
 9. *No nagging.* Hygiene prompts are passive, dismissible, and tied to natural workflow boundaries.
+
+The board now treats `accepted` items as enforced context; `proposed` items are visible drafts and not enforced until accepted.
 
 * Definitions and action vocabulary
 | Term | Meaning | Context effect |
 |------|---------|----------------|
 | Active | Accepted/proposed item that still steers the agent | Included in widget/context |
-| Accepted | User/model has committed to treating this as current | Included in context |
+| Accepted | User/model has committed to treating this as current | Included and enforced |
 | Proposed | Candidate item needing review, but still visible as current uncertainty | Included in context |
-| Hard | Accepted enforced constraint: explicit user constraint, safety-critical rule, architecture boundary, or decision that should block stale mutating tools | Included and enforced |
-| Soft | Normal guidance without stale-mutation blocking; use for important-but-not-enforced preferences/assumptions/decisions | Included if active |
+| Compatibility strength | Legacy `soft`/`hard` field in existing markdown/state payloads | Ignored for enforcement |
 | Archived | User-facing verb for removing a once-useful item from active context without saying it was false | Should map to an inactive retained state |
 | Rejected | Item is wrong, unwanted, or no longer valid | Retained but inactive |
 | Superseded | Item was replaced by clearer/current text | Retained but inactive; replacement active |
@@ -103,7 +104,7 @@ Avoid presenting historical shipped decisions as "rejected" in user-facing clean
 | Item type | Default action | Rationale |
 |-----------+----------------+-----------|
 | Current user preference | Keep active | Still guides future work |
-| Hard safety/architecture constraint | Keep active | Must steer or block stale mutation |
+| Accepted hard-enforcement candidate | Keep active | Should steer or block stale mutation |
 | Open product direction | Keep active | Still affects choices |
 | Unresolved assumption/question | Keep proposed or ask user | Needs attention before relying on it |
 | Completed implementation step | Archive from active board | Historical only |
@@ -112,14 +113,14 @@ Avoid presenting historical shipped decisions as "rejected" in user-facing clean
 | Duplicate/overlapping entries | Prefer merge/supersede later | Avoid ambiguity; do not over-automate MVP |
 | Product fact already documented | Move to docs + archive | README/design docs are better source of truth |
 | Ambiguous item | Ask user / keep by default | Cleanup should be conservative |
-| Hard item proposed for removal/softening | Per-item explicit confirmation | Avoid weakening safety barriers silently |
+| Accepted item proposed for removal/adjustment | Per-item explicit confirmation | Avoid weakening steering context silently |
 
 * User workflows
 ** Start of task: establish steering context
 - Read the active board summary.
 - If the board is noisy, run cleanup before starting deep work.
 - Add only task-relevant constraints/preferences.
-- Treat hard constraints as safety boundaries.
+- Treat accepted items as safety boundaries for stale mutation.
 
 ** During task: capture commitment points
 Add/update a board item when:
@@ -137,6 +138,9 @@ Prefer updating or superseding existing entries over adding a new duplicate.
 - Supersede temporary decisions into evergreen rules when still useful.
 - Move shipped behavior into README/design docs.
 - Avoid adding an active board item saying cleanup happened.
+
+* Historical planning notes (legacy hard/soft wording retained)
+The sections below are historical planning notes and keep legacy terminology for compatibility context.
 
 * Proposed solution: Board Hygiene
 Board Hygiene is the workflow that keeps the active board small and useful.
@@ -160,7 +164,7 @@ Ship the smallest workflow that reduces noise without adding too much machinery.
   - do not use the board as an implementation log,
   - add items only when they affect future behavior,
   - update/supersede before adding duplicates,
-  - use hard only for explicit user constraints or safety-critical rules.
+  - use accepted/proposed status intentionally instead of legacy hard/soft language.
 - Add examples of good vs bad board items.
 
 ** Stage 2: manual/local =/board-cleanup=
@@ -169,8 +173,8 @@ A TUI-only command that uses local heuristics and user confirmation.
 MVP behavior:
 
 1. Load current active board items only.
-2. Classify obvious historical soft items as archive candidates.
-3. Keep hard, proposed, and ambiguous items by default.
+2. Classify obvious historical accepted items as archive candidates.
+3. Keep accepted, proposed, and ambiguous items by default.
 4. Present a review UI sorted by recommended action, showing item id, status/strength, action, risk, text, and reason.
 5. Let user toggle selected low-risk archive actions, apply, or cancel.
 6. Apply selected archive actions through existing board helpers in one confirmed operation.

@@ -334,6 +334,12 @@ const zeroVersionHardRestored = mod.restoreBoardFromEntries([
 ]);
 assert.deepEqual(zeroVersionHardRestored, mod.createEmptyBoard(), "zero-version restored hard items are rejected");
 
+const legacyMarkdown = "# Live Decision Board\n\n- D1 | decision | accepted | hard | Legacy hard item\n";
+const parsedLegacy = mod.parseBoardMarkdown(legacyMarkdown, mod.createEmptyBoard());
+assert.equal(parsedLegacy.items[0].strength, "hard", "legacy strength is still parsed for session compatibility");
+assert.equal(mod.hasUninjectedHardChanges(parsedLegacy, 0), true, "accepted legacy items are enforced regardless of strength");
+assert.match(mod.serializeBoardMarkdown(parsedLegacy), /\| hard \|/, "serialize keeps strength as compatibility markdown format");
+
 const markdown = mod.serializeBoardMarkdown(withDecision);
 const parsed = mod.parseBoardMarkdown(markdown.replace("soft", "hard"), withDecision);
 assert.equal(parsed.items.find((item) => item.id === "A1").strength, "hard");
