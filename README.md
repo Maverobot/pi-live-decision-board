@@ -31,6 +31,7 @@ pi -e .
 | `/board-reject <id>` | Reject an item |
 | `/board-accept <id>` | Accept a proposed or rejected item |
 | `/board-supersede <id> <new text>` | Supersede an item and create a replacement |
+| `/board-cleanup` | Review active board items and archive obvious historical entries after confirmation |
 | `/board-clear` | Clear the board after confirmation |
 
 ## Agent tool
@@ -83,6 +84,24 @@ Use `hard` only for enforced constraints:
 - decisions that should block stale mutating tools until the model has seen the latest board.
 
 Do **not** use `hard` merely to mean "important". A hard accepted item participates in stale-mutation protection: if it changes, mutating tools such as `write`, `edit`, and unsafe `bash` are blocked until the fresh board has been injected into model context.
+
+## Board hygiene
+
+The board is the current working context, not a changelog. Add or keep board items only when they affect future behavior.
+
+Good board items:
+
+- "Use keyboard-first board management unless Pi documents mouse support."
+- "Hard: never mutate files after a hard constraint changes until the fresh board is injected."
+- "Assumption: keep defaults stable until the user requests a cleanup policy change."
+
+Bad active board items:
+
+- "Applied Round 5 review fixes."
+- "Ran npm test."
+- "Renamed `/board-show` to `/board-snapshot`."
+
+Use `/board-cleanup` to review active items and archive obvious historical entries. Archive removes an item from active context while retaining it in board history.
 
 ## Development
 
