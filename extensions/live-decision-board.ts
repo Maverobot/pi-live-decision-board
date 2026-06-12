@@ -997,9 +997,11 @@ class BoardCleanupComponent {
 	render(width: number): string[] {
 		if (this.cachedLines && this.cachedWidth === width) return this.cachedLines;
 		const selectedCount = this.recommendations.filter((rec) => rec.selected).length;
+		const helpLine = truncateToWidth(this.theme.fg("dim", "↑↓/j/k select • space toggle • enter apply selected • q/esc cancel"), width);
 		const lines = [
 			this.header(width),
 			truncateToWidth(`${this.recommendations.length} recommendations • ${selectedCount} selected`, width),
+			helpLine,
 			"",
 		];
 
@@ -1013,7 +1015,7 @@ class BoardCleanupComponent {
 			}
 		}
 
-		lines.push("", truncateToWidth(this.theme.fg("dim", "↑↓/j/k select • space toggle • enter apply selected • q/esc cancel"), width));
+		lines.push("");
 		this.cachedWidth = width;
 		this.cachedLines = lines;
 		return lines;
