@@ -26,7 +26,7 @@ pi -e .
 | `/assume <text>` | Quick capture: add an accepted assumption |
 | `/decide <text>` | Quick capture: add an accepted decision |
 | `/board-cleanup` | Review active board items and archive obvious historical entries after confirmation |
-| `/board-cleanup-subagent` | Start or queue read-only subagent-assisted cleanup recommendations; apply remains user-confirmed |
+| `/board-cleanup-subagent` | Start or queue a folded handoff for read-only subagent-assisted cleanup recommendations; apply remains user-confirmed |
 | `/board-snapshot` | Show the active board context snapshot as a visible message |
 | `/board-toggle` | Collapse or expand the persistent board body while keeping the summary line visible |
 
@@ -109,7 +109,9 @@ Use `/board-cleanup` to review active items and archive obvious historical entri
 
 ## Subagent-assisted cleanup
 
-`/board-cleanup-subagent` does not mutate the board directly and does not launch subagents from the extension itself. Instead, it snapshots the current active board and sends a structured cleanup request to the current Pi agent via `sendUserMessage`.
+`/board-cleanup-subagent` does not mutate the board directly and does not launch subagents from the extension itself. Instead, it snapshots the current active board and sends a structured cleanup request to the current Pi agent as a displayed custom handoff message.
+
+The handoff is folded by default in the TUI, similar to shell/tool output; use tool-call expansion to inspect the full generated prompt. The full prompt remains the message content sent to the current agent.
 
 The current agent may then launch read-only recommendation subagents, and it must summarize suggestions, ask for user confirmation, and apply only confirmed changes through normal board workflows.
 

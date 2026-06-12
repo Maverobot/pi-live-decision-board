@@ -380,9 +380,9 @@ Subagent cleanup should recommend, never apply.
 
 Implemented command shape:
 
-- =/board-cleanup-subagent= — implemented trigger command: the extension snapshots the active board and sends a structured cleanup request to the current Pi agent via =sendUserMessage=.
+- =/board-cleanup-subagent= — implemented trigger command: the extension snapshots the active board and sends a structured cleanup request to the current Pi agent as a displayed custom handoff message.
 
-This command does not directly launch subagents. The current/parent agent launches read-only recommendation subagents, then summarizes recommendations, asks for user confirmation, and applies only confirmed changes through normal board workflows.
+The handoff message is folded by default in the TUI, similar to shell/tool output, and expands with the normal tool-call expansion control to show the full generated prompt. This command does not directly launch subagents. The current/parent agent launches read-only recommendation subagents, then summarizes recommendations, asks for user confirmation, and applies only confirmed changes through normal board workflows.
 
 Historical/deferred command-shape notes:
 
@@ -474,7 +474,7 @@ Current manager includes inactive items. A future mode split may reduce clutter:
 ** Resolved: subagent cleanup extension invocation
 The extension API does not expose a direct subagent service. Current implementation uses this pattern:
 
-- the extension snapshots board context and sends a structured cleanup request to the current Pi agent via =sendUserMessage=
+- the extension snapshots board context and sends a structured cleanup request to the current Pi agent as a displayed, folded custom handoff message
 - the current/parent agent may launch read-only recommendation subagents and relay suggestions back
 - recommendations are applied only with user confirmation and freshness checks by the current agent
 

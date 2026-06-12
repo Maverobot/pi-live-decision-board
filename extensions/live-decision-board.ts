@@ -55,6 +55,7 @@ const CUSTOM_TYPE = "live-decision-board";
 const CONTEXT_CUSTOM_TYPE = "live-decision-board-context";
 const VISIBLE_CUSTOM_TYPE = "live-decision-board-visible";
 const DELTA_CUSTOM_TYPE = "live-decision-board-delta";
+const CLEANUP_SUBAGENT_HANDOFF_CUSTOM_TYPE = "live-decision-board-cleanup-subagent-handoff";
 const BOARD_CONTEXT_TYPES = new Set([CONTEXT_CUSTOM_TYPE, VISIBLE_CUSTOM_TYPE, DELTA_CUSTOM_TYPE]);
 
 const BOARD_ITEM_STATUSES: BoardStatus[] = ["proposed", "accepted", "rejected", "superseded"];
@@ -348,6 +349,50 @@ function formatCleanupArchiveConfirmationItem(recommendation: CleanupRecommendat
 
 function formatCleanupSupersedeConfirmationItem(recommendation: CleanupRecommendation): string {
 	return `- [${recommendation.id}] ${recommendation.observedText} → ${recommendation.replacementText ?? "replacement text"}`;
+}
+
+interface BoardCleanupSubagentHandoffDetails {
+	boardVersion: number;
+	activeItemCount: number;
+}
+
+function createBoardCleanupSubagentHandoff(board: BoardState): {
+	customType: string;
+	content: string;
+	display: true;
+	details: BoardCleanupSubagentHandoffDetails;
+} {
+	const active = activeBoardItems(board);
+	return {
+		customType: CLEANUP_SUBAGENT_HANDOFF_CUSTOM_TYPE,
+		content: formatBoardCleanupSubagentPrompt(board),
+		display: true,
+		details: { boardVersion: board.version, activeItemCount: active.length },
+	};
+}
+
+function renderBoardCleanupSubagentHandoff(
+	message: { content: string | { type: string; text?: string }[]; details?: unknown },
+	options: { expanded: boolean },
+	theme: Theme,
+): Text {
+	const details = message.details as Partial<BoardCleanupSubagentHandoffDetails> | undefined;
+	const boardVersion = typeof details?.boardVersion === "number" ? details.boardVersion : undefined;
+	const activeItemCount = typeof details?.activeItemCount === "number" ? details.activeItemCount : undefined;
+	const prompt = typeof message.content === "string"
+		? message.content
+		: message.content.filter((part) => part.type === "text").map((part) => part.text ?? "").join("\n");
+	if (options.expanded) {
+		return new Text(`${theme.fg("accent", "Subagent-assisted board cleanup handoff")}\n${prompt}`, 1, 0);
+	}
+	const versionLabel = boardVersion === undefined ? "Board" : `Board v${boardVersion}`;
+	const itemLabel = activeItemCount === undefined ? "active items" : pluralize(activeItemCount, "active item");
+	const text = [
+		theme.fg("accent", "Subagent-assisted board cleanup"),
+		theme.fg("muted", `${versionLabel} • ${itemLabel} • folded prompt`),
+		theme.fg("dim", "Use tool-call expand to view the full cleanup handoff prompt."),
+	].join("\n");
+	return new Text(text, 1, 0);
 }
 
 function formatBoardCleanupSubagentPrompt(board: BoardState): string {
@@ -1399,6 +1444,8 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 	const compatibilityStrengthMessage =
 		"Accepted items are enforced automatically; /board-hard and /board-soft are compatibility no-ops.";
 
+	pi.registerMessageRenderer?.(CLEANUP_SUBAGENT_HANDOFF_CUSTOM_TYPE, renderBoardCleanupSubagentHandoff);
+
 	pi.registerCommand("board-snapshot", {
 		description: "Show the active context snapshot of the live assumptions/decisions board as a visible message",
 		handler: async (_args, _ctx) => showBoard(),
@@ -1442,12 +1489,12 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 				ctx.ui.notify("No active board items to clean up", "info");
 				return;
 			}
-			const prompt = formatBoardCleanupSubagentPrompt(board);
+			const message = createBoardCleanupSubagentHandoff(board);
 			if (ctx.isIdle()) {
-				pi.sendUserMessage(prompt);
+				pi.sendMessage(message, { triggerTurn: true });
 				ctx.ui.notify("Started subagent-assisted board cleanup", "info");
 			} else {
-				pi.sendUserMessage(prompt, { deliverAs: "followUp" });
+				pi.sendMessage(message, { triggerTurn: true, deliverAs: "followUp" });
 				ctx.ui.notify("Queued subagent-assisted board cleanup follow-up", "info");
 			}
 		},
