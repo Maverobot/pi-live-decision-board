@@ -79,7 +79,7 @@ Valid statuses: `proposed`, `accepted`, `rejected`, `superseded`.
 
 ## Accepted vs proposed items
 
-Accepted items are enforced current context. The agent should treat every accepted assumption or decision as relevant before mutating files.
+Accepted items are enforced as current context. The agent should treat every accepted assumption or decision as relevant before mutating files.
 
 Proposed items are visible drafts. Use them for uncertain assumptions or decisions that need review before they become enforced.
 

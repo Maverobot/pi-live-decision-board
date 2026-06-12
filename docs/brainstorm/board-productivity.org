@@ -104,7 +104,7 @@ Avoid presenting historical shipped decisions as "rejected" in user-facing clean
 | Item type | Default action | Rationale |
 |-----------+----------------+-----------|
 | Current user preference | Keep active | Still guides future work |
-| Accepted hard-enforcement candidate | Keep active | Should steer or block stale mutation |
+| Accepted safety/architecture constraint | Keep active | Steers future work and participates in accepted-item stale-mutation protection |
 | Open product direction | Keep active | Still affects choices |
 | Unresolved assumption/question | Keep proposed or ask user | Needs attention before relying on it |
 | Completed implementation step | Archive from active board | Historical only |
@@ -265,29 +265,29 @@ Actions:
 - Ensure the next model turn receives fresh board context before mutating work.
 
 * Safety requirements
-** When an item should be hard
-Hard is not a synonym for important.
+** Accepted items as enforced context
+Accepted is not a synonym for permanent or uneditable, but it does mean the item is part of the current operating contract.
 
-Use =hard= only when the item should be an enforced constraint:
+Accepted items are enforced for stale-mutation safety:
 
-- the user explicitly states a constraint,
-- the item is safety-critical,
-- the item defines an architectural boundary that must not be crossed,
-- stale mutating tools should be blocked until the model has seen the latest version.
+- explicit user constraints,
+- safety-critical rules,
+- architectural boundaries that must not be crossed,
+- assumptions or decisions the model must see before mutating files.
 
-Use =soft= for important guidance that should steer reasoning but should not block tool use.
+Use =proposed= for uncertain items that should remain visible but should not become enforced until reviewed.
 
-** Hard constraint preservation
-Hard accepted items default to keep.
+** Accepted-item preservation
+Accepted items default to keep unless they are clearly historical or no longer useful.
 
-Any action that rejects, archives, supersedes, softens, or deletes a hard accepted item must require explicit per-item confirmation.
+Any action that rejects, archives, supersedes, or deletes an accepted item should require user confirmation.
 
-Superseding a hard item should preserve =hard= strength by default and show before/after constraint text.
+Superseding an accepted item should show before/after operating-contract text.
 
-Softening or rejecting a hard item should warn:
+Rejecting or archiving an accepted item should warn:
 
 #+begin_quote
-This removes or weakens a stale-mutation barrier.
+This removes or changes enforced current context.
 #+end_quote
 
 ** Stale proposal validation
@@ -322,13 +322,13 @@ A cleanup subagent, when used, should be read-only:
 - validate every action before display/apply
 
 ** Confirmation boundaries
-Bulk apply is allowed only for low-risk soft historical cleanup.
+Bulk apply is allowed only for low-risk historical cleanup.
 
 Per-item confirmation is required for:
 
-- hard item removal/softening/superseding
+- accepted item removal or superseding
 - hard delete
-- strength changes
+- compatibility strength changes, if any future workflow reintroduces them
 - ambiguous items
 - merge/supersede of multiple items
 
@@ -449,7 +449,7 @@ Board hygiene is successful when:
 
 - active board usually stays under 7 items during normal work
 - user can clean a noisy board in under one minute
-- cleanup never changes hard constraints without explicit confirmation
+- cleanup never changes accepted current context without explicit confirmation
 - cleanup never creates new active clutter
 - model guidance reduces implementation-log board entries
 - historical items remain auditable
@@ -490,7 +490,7 @@ Implement Board Hygiene in this order:
 
 1. Guidance and docs: make the board's purpose and anti-changelog rules explicit.
 2. Manual/local =/board-cleanup=: conservative classification, review UI, user-confirmed apply.
-3. Safety hardening: impact preview, hard-item per-item confirmations, stale recommendation validation.
+3. Safety hardening: impact preview, accepted-item per-item confirmations, stale recommendation validation.
 4. Optional subagent-assisted cleanup: structured read-only recommendations with local fallback.
 5. Passive hygiene prompts after the manual workflow proves useful.
 

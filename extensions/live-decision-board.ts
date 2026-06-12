@@ -1330,7 +1330,7 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 			ctx.ui.notify(
 				widgetExpanded
 					? "Live Decision Board widget expanded"
-					: "Live Decision Board widget collapsed; summary remains visible, and the board still updates, injects into context, and enforces hard decisions.",
+					: "Live Decision Board widget collapsed; summary remains visible, and the board still updates, injects into context, and enforces accepted items.",
 				"info",
 			);
 		},
@@ -1353,7 +1353,7 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 	});
 
 	pi.registerCommand("assume", {
-		description: "Add an accepted soft assumption to the live board",
+		description: "Add an accepted assumption to the live board",
 		handler: async (args, ctx) => {
 			const text = args.trim();
 			if (!text) return ctx.ui.notify("Usage: /assume <text>", "warning");
@@ -1362,7 +1362,7 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 	});
 
 	pi.registerCommand("decide", {
-		description: "Add an accepted soft decision to the live board",
+		description: "Add an accepted decision to the live board",
 		handler: async (args, ctx) => {
 			const text = args.trim();
 			if (!text) return ctx.ui.notify("Usage: /decide <text>", "warning");

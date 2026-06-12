@@ -62,6 +62,10 @@ for (const name of [
 }
 assert.equal(commands.has("board-show"), false, "board-show should be renamed to board-snapshot");
 assert.match(commands.get("board-snapshot").description, /active context snapshot/, "board-snapshot should describe the active context view it records");
+assert.match(commands.get("assume").description, /accepted assumption/i, "assume command should use accepted-item wording");
+assert.doesNotMatch(commands.get("assume").description, /soft|hard/i, "assume command should not expose legacy strength wording");
+assert.match(commands.get("decide").description, /accepted decision/i, "decide command should use accepted-item wording");
+assert.doesNotMatch(commands.get("decide").description, /soft|hard/i, "decide command should not expose legacy strength wording");
 assert.equal(registeredTool.name, "decision_board", "decision_board tool should be registered");
 assert.equal(registeredTool.executionMode, "sequential", "decision_board runs sequentially before later tool preflights");
 const promptGuidelines = registeredTool.promptGuidelines.join("\n");
@@ -122,6 +126,8 @@ assert.equal(latestStatus, undefined, "board summary should not be duplicated in
 assert.match(latestMessage.content, /Build as a Pi extension first/);
 const entriesBeforeToggle = entries.length;
 await commands.get("board-toggle").handler("", ctx);
+assert.doesNotMatch(latestNotificationMessage, /hard decisions/i, "collapse notification should use accepted-item enforcement wording");
+assert.match(latestNotificationMessage, /enforces accepted items/i, "collapse notification should explain accepted-item enforcement");
 const collapsedWidgetText = renderLatestWidgetText();
 assert.match(collapsedWidgetText, /Board/, "board-toggle keeps the board summary visible when collapsed");
 assert.doesNotMatch(collapsedWidgetText, /\bv\d+\b/, "collapsed board widget summary should also hide implementation-detail board versions");
