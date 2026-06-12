@@ -410,9 +410,9 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 	assert.doesNotMatch(cleanupRendered[0], /10 recommendations • 9 selected/);
 	assert.match(cleanupRendered[0], /Archive from active board/);
 	assert.match(cleanupRendered[0], /Apply Round 5/);
-	assert.match(cleanupRendered[0], /accepted\/soft/);
-	assert.doesNotMatch(cleanupRendered[0], /accepted\/hard/);
-	assert.doesNotMatch(cleanupRendered[0], /Hard constraints are kept by default/);
+	assert.match(cleanupRendered[0], /\[D1\].*accepted/);
+	assert.doesNotMatch(cleanupRendered[0], /accepted\/soft|accepted\/hard/);
+	assert.doesNotMatch(cleanupRendered[0], /Hard constraints are kept by default|Hard constraints/i);
 	assert.match(cleanupRendered[0], /space toggle/);
 	const cleanupInitialTop = cleanupRendered[0].split("\n").slice(0, 4).join("\n");
 	assert.match(cleanupInitialTop, /space toggle/, "cleanup keybinding help should be visible before long recommendation lists can push lower content out of the overlay");
@@ -578,8 +578,10 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 	await cleanupCommands.get("board-cleanup").handler("", cleanupCtx);
 	assert.equal(confirmTitle, "Apply Board Cleanup?");
 	assert.match(confirmMessage, /Active items:\s*2\s*→\s*1/i);
+	assert.match(confirmMessage, /Accepted items:\s*2\s*→\s*1/i);
 	assert.match(confirmMessage, /Archive:\s*1/i);
 	assert.match(confirmMessage, /Supersede:\s*0/i);
+	assert.doesNotMatch(confirmMessage, /Hard constraints/i);
 	assert.match(confirmMessage, /Archive from active board:/i);
 	assert.match(confirmMessage, /\[D1] Apply Round 11 historical cleanup/);
 	assert.doesNotMatch(confirmMessage, /\[D2].*Core implementation constraint/, "confirmation should list only selected cleanup changes");

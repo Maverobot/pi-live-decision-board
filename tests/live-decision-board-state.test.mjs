@@ -141,11 +141,24 @@ assert.equal(cleanupD1.selected, true);
 assert.match(cleanupD1.reason, /historical/i);
 assert(cleanupD2, "cleanup includes hard decision");
 assert.equal(cleanupD2.action, "keep", "hard items default keep");
+assert.equal(cleanupD2.riskLevel, "low", "legacy hard strength no longer creates special cleanup risk");
+assert.doesNotMatch(cleanupD2.reason, /Hard constraints/i, "recommendation reason does not reference hard constraints");
 assert(cleanupA1, "cleanup includes assumption");
 assert.equal(cleanupA1.action, "needs_user_review", "proposed items need review");
 assert.equal(cleanupA1.selected, false);
 assert(cleanupD3, "cleanup includes ambiguous decision");
 assert.equal(cleanupD3.action, "keep", "ambiguous current items default keep");
+
+const legacyHardHistoricalBoard = mod.addBoardItem(mod.createEmptyBoard(), {
+	kind: "decision",
+	text: "Apply Round 7 review fixes",
+	status: "accepted",
+	strength: "hard",
+});
+const legacyHardHistorical = mod.recommendBoardCleanup(legacyHardHistoricalBoard)[0];
+assert(legacyHardHistorical, "legacy hard historical text is recommended for cleanup");
+assert.equal(legacyHardHistorical.action, "archive", "legacy hard strength does not prevent historical cleanup suggestions");
+assert.equal(legacyHardHistorical.selected, true, "historical cleanup suggestions are preselected");
 
 const inactiveCleanupBoard = mod.updateBoardItem(cleanupBoard, "D1", { status: "rejected" });
 assert(!mod.recommendBoardCleanup(inactiveCleanupBoard).some((rec) => rec.id === "D1"), "inactive items are not recommended");
@@ -156,8 +169,8 @@ const archivePlan = cleanupRecommendations.map((rec) =>
 const cleanupImpact = mod.summarizeBoardCleanupImpact(cleanupBoard, archivePlan);
 assert.equal(cleanupImpact.activeBefore, 4);
 assert.equal(cleanupImpact.activeAfter, 3);
-assert.equal(cleanupImpact.hardBefore, 1);
-assert.equal(cleanupImpact.hardAfter, 1);
+assert.equal(cleanupImpact.acceptedBefore, 3);
+assert.equal(cleanupImpact.acceptedAfter, 2);
 assert.equal(cleanupImpact.archiveCount, 1);
 
 const cleanedBoard = mod.applyBoardCleanup(cleanupBoard, archivePlan);

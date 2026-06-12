@@ -87,10 +87,6 @@ function normalizeBoardText(text: string): string {
 	return text.replace(/\r?\n/g, " ").replace(/\s+/g, " ").trim();
 }
 
-function isAcceptedHardItem(item: Pick<BoardItem, "status" | "strength">): boolean {
-	return item.status === "accepted" && item.strength === "hard";
-}
-
 function isEnforcedItem(item: Pick<BoardItem, "status">): boolean {
 	return item.status === "accepted";
 }
@@ -222,16 +218,6 @@ export function recommendBoardCleanup(board: BoardState): CleanupRecommendation[
 
 function recommendCleanupForItem(item: BoardItem): CleanupRecommendation {
 	const base = cleanupBase(item);
-	if (isAcceptedHardItem(item)) {
-		return {
-			...base,
-			action: "keep",
-			selected: false,
-			reason: "Hard constraints are kept by default.",
-			riskLevel: "high",
-			requiresExplicitConfirmation: true,
-		};
-	}
 	if (item.status === "proposed") {
 		return {
 			...base,
@@ -279,8 +265,8 @@ function looksHistorical(text: string): boolean {
 export interface CleanupImpact {
 	activeBefore: number;
 	activeAfter: number;
-	hardBefore: number;
-	hardAfter: number;
+	acceptedBefore: number;
+	acceptedAfter: number;
 	archiveCount: number;
 	supersedeCount: number;
 	needsUserReviewCount: number;
@@ -288,13 +274,13 @@ export interface CleanupImpact {
 
 export function summarizeBoardCleanupImpact(board: BoardState, recommendations: CleanupRecommendation[]): CleanupImpact {
 	const activeBefore = activeBoardItems(board).length;
-	const hardBefore = activeBoardItems(board).filter((item) => item.status === "accepted" && item.strength === "hard").length;
+	const acceptedBefore = activeBoardItems(board).filter((item) => item.status === "accepted").length;
 	const nextBoard = applyBoardCleanup(board, recommendations);
 	return {
 		activeBefore,
 		activeAfter: activeBoardItems(nextBoard).length,
-		hardBefore,
-		hardAfter: activeBoardItems(nextBoard).filter((item) => item.status === "accepted" && item.strength === "hard").length,
+		acceptedBefore,
+		acceptedAfter: activeBoardItems(nextBoard).filter((item) => item.status === "accepted").length,
 		archiveCount: recommendations.filter((rec) => rec.selected && rec.action === "archive").length,
 		supersedeCount: recommendations.filter((rec) => rec.selected && rec.action === "supersede").length,
 		needsUserReviewCount: recommendations.filter((rec) => rec.selected && rec.action === "needs_user_review").length,
@@ -346,7 +332,7 @@ function formatCleanupImpactForConfirmation(impact: CleanupImpact, selectedRecom
 	const supersedeRecommendations = selectedRecommendations.filter((recommendation) => recommendation.action === "supersede");
 	const lines = [
 		`Active items: ${impact.activeBefore} → ${impact.activeAfter}`,
-		`Hard constraints: ${impact.hardBefore} → ${impact.hardAfter}`,
+		`Accepted items: ${impact.acceptedBefore} → ${impact.acceptedAfter}`,
 		`Archive: ${impact.archiveCount}`,
 		`Supersede: ${impact.supersedeCount}`,
 	];
@@ -1083,12 +1069,11 @@ class BoardCleanupComponent {
 		const id = this.theme.fg("accent", `[${recommendation.id}]`);
 		const statusColor = recommendation.observedStatus === "accepted" ? "success" : recommendation.observedStatus === "proposed" ? "warning" : "dim";
 		const status = this.theme.fg(statusColor, recommendation.observedStatus);
-		const strength = recommendation.observedStrength === "hard" ? this.theme.fg("warning", recommendation.observedStrength) : this.theme.fg("dim", recommendation.observedStrength);
 		const action = this.theme.fg("warning", this.actionLabel(recommendation.action));
 		const risk = this.theme.fg("muted", recommendation.riskLevel);
 		const text = this.theme.fg("muted", recommendation.observedText);
 		return {
-			main: truncateToWidth(`${cursor} ${checkbox} ${id} ${status}/${strength} ${action} • ${risk} • ${text}`, width),
+			main: truncateToWidth(`${cursor} ${checkbox} ${id} ${status} ${action} • ${risk} • ${text}`, width),
 			reason: truncateToWidth(this.theme.fg("dim", `  ${recommendation.reason}`), width),
 		};
 	}
