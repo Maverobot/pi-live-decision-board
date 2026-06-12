@@ -861,7 +861,7 @@ function getCustomType(message: unknown): string {
 
 type BoardManagerAction =
 	| { type: "close" }
-	| { type: "edit" | "accept" | "reject" | "harden" | "soften" | "supersede"; id: string };
+	| { type: "edit" | "accept" | "reject" | "supersede"; id: string };
 
 type CleanupReviewResult = { type: "cancel" } | { type: "apply"; recommendations: CleanupRecommendation[] };
 
@@ -908,8 +908,6 @@ class BoardManagerComponent {
 		if (matchesKey(data, Key.enter) || data === "e") this.done({ type: "edit", id: selected.id });
 		else if (data === "a") this.done({ type: "accept", id: selected.id });
 		else if (data === "r") this.done({ type: "reject", id: selected.id });
-		else if (data === "h") this.done({ type: "harden", id: selected.id });
-		else if (data === "s") this.done({ type: "soften", id: selected.id });
 		else if (data === "u") this.done({ type: "supersede", id: selected.id });
 	}
 
@@ -917,13 +915,9 @@ class BoardManagerComponent {
 		if (this.cachedLines && this.cachedWidth === width) return this.cachedLines;
 		const activeCount = this.items.filter(isActiveItem).length;
 		const inactiveCount = this.items.length - activeCount;
-		const hardCount = this.items.filter((item) => isAcceptedHardItem(item)).length;
 		const lines = [
 			this.header(width),
-			truncateToWidth(
-				`Board v${this.board.version} • ${pluralize(activeCount, "active item")} • ${pluralize(inactiveCount, "inactive item")} • ${pluralize(hardCount, "hard constraint")}`,
-				width,
-			),
+			truncateToWidth(`Board v${this.board.version} • ${pluralize(activeCount, "active item")} • ${pluralize(inactiveCount, "inactive item")}`, width),
 			"",
 		];
 
@@ -935,7 +929,7 @@ class BoardManagerComponent {
 			}
 		}
 
-		lines.push("", truncateToWidth(this.theme.fg("dim", "↑↓/j/k select • enter/e edit • a accept • r reject/remove • h hard • s soft • u supersede • q/esc close"), width));
+		lines.push("", truncateToWidth(this.theme.fg("dim", "↑↓/j/k select • enter/e edit • a accept • r reject/remove • u supersede • q/esc close"), width));
 		this.cachedWidth = width;
 		this.cachedLines = lines;
 		return lines;
@@ -955,11 +949,10 @@ class BoardManagerComponent {
 		const selected = index === this.selectedIndex;
 		const marker = selected ? this.theme.fg("accent", ">") : " ";
 		const id = this.theme.fg("accent", `[${item.id}]`);
-		const strength = item.strength === "hard" ? this.theme.fg("warning", item.strength) : this.theme.fg("dim", item.strength);
 		const statusColor = item.status === "accepted" ? "success" : item.status === "proposed" ? "warning" : "dim";
 		const status = this.theme.fg(statusColor, item.status);
 		const text = isActiveItem(item) ? this.theme.fg("muted", item.text) : this.theme.fg("dim", item.text);
-		return truncateToWidth(`${marker} ${id} ${status}/${strength} ${text}`, width);
+		return truncateToWidth(`${marker} ${id} ${status} ${text}`, width);
 	}
 
 	private moveSelection(delta: number): void {
@@ -1237,6 +1230,7 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 				(tui, theme, _keybindings, done) => new BoardManagerComponent(board, theme, done, () => tui.requestRender()),
 				{ overlay: true, overlayOptions: { width: "90%", minWidth: 60, maxHeight: "80%" } },
 			);
+			if (!action) continue;
 			if (action.type === "close") return;
 			if (boardEpoch !== baseEpoch) {
 				ctx.ui.notify("Live Decision Board changed while manager was open; action skipped and manager refreshed.", "warning");
@@ -1268,12 +1262,6 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 				return;
 			case "reject":
 				safeApplyBoard(ctx, "Rejected item", () => updateBoardItem(board, item.id, { status: "rejected" }));
-				return;
-			case "harden":
-				safeApplyBoard(ctx, "Marked hard", () => updateBoardItem(board, item.id, { strength: "hard" }));
-				return;
-			case "soften":
-				safeApplyBoard(ctx, "Marked soft", () => updateBoardItem(board, item.id, { strength: "soft" }));
 				return;
 		}
 	}
@@ -1341,6 +1329,9 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 		restoreBoard(ctx);
 	});
 
+	const compatibilityStrengthMessage =
+		"Accepted items are enforced automatically; /board-hard and /board-soft are compatibility no-ops.";
+
 	pi.registerCommand("board-snapshot", {
 		description: "Show the active context snapshot of the live assumptions/decisions board as a visible message",
 		handler: async (_args, _ctx) => showBoard(),
@@ -1395,16 +1386,16 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 	});
 
 	pi.registerCommand("board-hard", {
-		description: "Mark an item as an enforced hard constraint: /board-hard A1",
-		handler: async (args, ctx) => {
-			safeApplyBoard(ctx, "Marked hard", () => updateBoardItem(board, args.trim(), { strength: "hard" }));
+		description: "Compatibility no-op: enforce board items as accepted decisions (no-op)",
+		handler: async (_args, ctx) => {
+			ctx.ui.notify(`Compatibility: ${compatibilityStrengthMessage}`, "info");
 		},
 	});
 
 	pi.registerCommand("board-soft", {
-		description: "Mark a board item soft: /board-soft A1",
-		handler: async (args, ctx) => {
-			safeApplyBoard(ctx, "Marked soft", () => updateBoardItem(board, args.trim(), { strength: "soft" }));
+		description: "Compatibility no-op: deprecate board-soft in favor of accepted-item enforcement",
+		handler: async (_args, ctx) => {
+			ctx.ui.notify(`Compatibility: ${compatibilityStrengthMessage}`, "info");
 		},
 	});
 
@@ -1474,10 +1465,10 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 		description: "List or update the live assumptions/decisions board.",
 		promptSnippet: "List or update live assumptions and decisions for the current project.",
 		promptGuidelines: [
-			"Use decision_board only for currently actionable assumptions or decisions that should affect future behavior.",
-			"Use decision_board before acting on a decision that is not already recorded in the live board.",
-			"Do not use decision_board as an implementation log for progress updates, tests run, files changed, or completed review batches.",
-			"Use hard only for explicit user constraints, safety-critical rules, or decisions that should block stale mutating tools; do not use hard merely to mean important.",
+			"Use decision_board to record accepted assumptions or decisions and enforce them as the current contract for this work.",
+			"Use decision_board before acting on an accepted decision that is not already recorded in the live board.",
+			"Treat proposed items as visible draft assumptions/decisions; reconcile them before marking them accepted.",
+			"Use decision_board as a current-context contract, not as an implementation log for progress updates, tests run, files changed, or completed review batches.",
 		],
 		executionMode: "sequential",
 		parameters: Type.Object({
@@ -1519,8 +1510,15 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 				if (!params.status) throw new Error("decision_board set_status requires status");
 				nextBoard = updateBoardItem(board, params.id, { status: params.status });
 			} else {
-				if (!params.strength) throw new Error("decision_board set_strength requires strength");
-				nextBoard = updateBoardItem(board, params.id, { strength: params.strength });
+				return {
+					content: [
+						{
+							type: "text",
+							text: "No change: decision_board set_strength is deprecated. Accepted board items are enforced automatically and legacy strength changes are a no-op.",
+						},
+					],
+					details: { board },
+				};
 			}
 			const result = commitBoard(nextBoard, ctx, "agent");
 			return {

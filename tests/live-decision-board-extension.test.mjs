@@ -21,6 +21,7 @@ let latestWidget;
 let latestStatus = "unset";
 let latestMessage;
 let latestSendOptions;
+let latestNotificationMessage = "";
 let branchEntries = [];
 
 extension({
@@ -63,10 +64,11 @@ assert.equal(commands.has("board-show"), false, "board-show should be renamed to
 assert.match(commands.get("board-snapshot").description, /active context snapshot/, "board-snapshot should describe the active context view it records");
 assert.equal(registeredTool.name, "decision_board", "decision_board tool should be registered");
 assert.equal(registeredTool.executionMode, "sequential", "decision_board runs sequentially before later tool preflights");
-assert(
-	registeredTool.promptGuidelines.some((line) => line.includes("Use hard only")),
-	"decision_board prompt guidance should explain when hard is appropriate",
-);
+const promptGuidelines = registeredTool.promptGuidelines.join("\n");
+assert.match(promptGuidelines, /accepted/i, "decision_board prompt guidance should mention accepted items");
+assert.match(promptGuidelines, /proposed/i, "decision_board prompt guidance should explain proposed items");
+assert.match(promptGuidelines, /enforce/i, "decision_board prompt guidance should mention enforcement");
+assert.doesNotMatch(promptGuidelines, /Use hard only/i, "prompt guidance should not promote hard/soft distinction");
 
 const testTheme = {
 	fg: (color, text) => `<${color}>${text}</${color}>`,
@@ -94,7 +96,9 @@ const ctx = {
 		setWidget: (_key, value) => {
 			latestWidget = value;
 		},
-		notify: () => {},
+		notify: (message) => {
+			latestNotificationMessage = message;
+		},
 		confirm: async () => true,
 		editor: async (_title, initial) => initial,
 	},
@@ -133,11 +137,16 @@ await commands.get("board-reject").handler("A1", ctx);
 assert.equal(entries.at(-1).data.items.find((item) => item.id === "A1").status, "rejected");
 await commands.get("board-accept").handler("A1", ctx);
 assert.equal(entries.at(-1).data.items.find((item) => item.id === "A1").status, "accepted");
-await commands.get("board-hard").handler("D1", ctx);
 const lowHardBoard = entries.at(-1).data;
 const beforeNoOp = entries.length;
+latestNotificationMessage = "";
 await commands.get("board-hard").handler("D1", ctx);
-assert.equal(entries.length, beforeNoOp, "same-value hard command should not persist a no-op change");
+assert.equal(entries.length, beforeNoOp, "board-hard command is compatibility no-op");
+assert.match(latestNotificationMessage, /accepted.*enforced/i, "board-hard should explain automatic accepted enforcement");
+latestNotificationMessage = "";
+await commands.get("board-soft").handler("D1", ctx);
+assert.equal(entries.length, beforeNoOp, "board-soft command is compatibility no-op");
+assert.match(latestNotificationMessage, /accepted.*enforced/i, "board-soft should explain automatic accepted enforcement");
 
 await commands.get("board-supersede").handler("D1 Build extension MVP first", ctx);
 assert.equal(entries.at(-1).data.items.find((item) => item.id === "D1").status, "superseded");
@@ -160,19 +169,25 @@ const noOpToolResult = await registeredTool.execute(
 	undefined,
 	ctx,
 );
-assert.equal(entries.length, beforeToolNoOp, "same-value decision_board tool updates should not append duplicate board entries");
-assert.match(noOpToolResult.content[0].text, /No change/, "same-value decision_board tool updates should report no change");
+assert.equal(entries.length, beforeToolNoOp, "set_strength compatibility action should not append duplicate board entries");
+assert.match(noOpToolResult.content[0].text, /set_strength.*deprecated/i, "set_strength no-op should report deprecation");
+
+const noStrengthToolResult = await registeredTool.execute(
+	"tool-3",
+	{ action: "set_strength", id: "D3" },
+	undefined,
+	undefined,
+	ctx,
+);
+assert.equal(entries.length, beforeToolNoOp, "set_strength without strength should remain no-op compatibility behavior");
+assert.match(noStrengthToolResult.content[0].text, /set_strength.*deprecated/i, "set_strength missing strength should report deprecation");
 
 await assert.rejects(
 	() => registeredTool.execute("tool-2", { action: "set_status", id: "D3" }, undefined, undefined, ctx),
 	/set_status requires status/,
 	"missing status should be rejected without corrupting board state",
 );
-await assert.rejects(
-	() => registeredTool.execute("tool-3", { action: "set_strength", id: "D3" }, undefined, undefined, ctx),
-	/set_strength requires strength/,
-	"missing strength should be rejected without corrupting board state",
-);
+
 const supersedeResult = await registeredTool.execute(
 	"tool-4",
 	{ action: "supersede", id: "D3", text: "Prefer smallest safe MVP" },
@@ -385,7 +400,6 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 	await cleanupEvents.get("session_start")({}, cleanupCtx);
 	await cleanupCommands.get("decide").handler("Apply Round 5 review fixes", cleanupCtx);
 	await cleanupCommands.get("decide").handler("Core implementation constraint", cleanupCtx);
-	await cleanupCommands.get("board-hard").handler("D2", cleanupCtx);
 	for (let index = 3; index <= 10; index += 1) {
 		await cleanupCommands.get("decide").handler(`Apply Round ${index} review fixes`, cleanupCtx);
 	}
@@ -397,8 +411,8 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 	assert.match(cleanupRendered[0], /Archive from active board/);
 	assert.match(cleanupRendered[0], /Apply Round 5/);
 	assert.match(cleanupRendered[0], /accepted\/soft/);
-	assert.match(cleanupRendered[0], /accepted\/hard/);
-	assert.match(cleanupRendered[0], /Hard constraints are kept by default/);
+	assert.doesNotMatch(cleanupRendered[0], /accepted\/hard/);
+	assert.doesNotMatch(cleanupRendered[0], /Hard constraints are kept by default/);
 	assert.match(cleanupRendered[0], /space toggle/);
 	const cleanupInitialTop = cleanupRendered[0].split("\n").slice(0, 4).join("\n");
 	assert.match(cleanupInitialTop, /space toggle/, "cleanup keybinding help should be visible before long recommendation lists can push lower content out of the overlay");
@@ -499,7 +513,6 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 
 	await cleanupEvents.get("session_start")({}, cleanupCtx);
 	await cleanupCommands.get("decide").handler("Core implementation constraint", cleanupCtx);
-	await cleanupCommands.get("board-hard").handler("D1", cleanupCtx);
 	latestNotification = "";
 	const entriesBeforeCleanup = cleanupEntries.length;
 	await cleanupCommands.get("board-cleanup").handler("", cleanupCtx);
@@ -561,12 +574,10 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 	await cleanupEvents.get("session_start")({}, cleanupCtx);
 	await cleanupCommands.get("decide").handler("Apply Round 11 historical cleanup", cleanupCtx);
 	await cleanupCommands.get("decide").handler("Core implementation constraint", cleanupCtx);
-	await cleanupCommands.get("board-hard").handler("D2", cleanupCtx);
 	const entriesBeforeCleanup = cleanupEntries.length;
 	await cleanupCommands.get("board-cleanup").handler("", cleanupCtx);
 	assert.equal(confirmTitle, "Apply Board Cleanup?");
 	assert.match(confirmMessage, /Active items:\s*2\s*→\s*1/i);
-	assert.match(confirmMessage, /Hard constraints:\s*1\s*→\s*1/i);
 	assert.match(confirmMessage, /Archive:\s*1/i);
 	assert.match(confirmMessage, /Supersede:\s*0/i);
 	assert.match(confirmMessage, /Archive from active board:/i);
@@ -629,7 +640,6 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 	await cleanupEvents.get("session_start")({}, cleanupCtx);
 	await cleanupCommands.get("decide").handler("Apply Round 11 historical cleanup", cleanupCtx);
 	await cleanupCommands.get("decide").handler("Core implementation constraint", cleanupCtx);
-	await cleanupCommands.get("board-hard").handler("D2", cleanupCtx);
 	latestNotification = "";
 	const entriesBeforeCleanup = cleanupEntries.length;
 	await cleanupCommands.get("board-cleanup").handler("", cleanupCtx);
@@ -974,6 +984,8 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 	assert.match(rendered[0], /Live Decision Board Manager/, "board-manage should render a titled keyboard UI");
 	assert.match(rendered[0], /> \[D1\]/, "manager initially selects the first sorted decision");
 	assert.match(rendered[0], /e edit/, "manager renders keyboard help");
+	assert.doesNotMatch(rendered[0], /\bh hard\b/, "manager help should not show harden action");
+	assert.doesNotMatch(rendered[0], /\bs soft\b/, "manager help should not show soften action");
 	assert.match(rendered[1], /> \[A1\]/, "j/down moves selection to the next item");
 }
 
@@ -1076,7 +1088,7 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 	const entriesBeforeManagerActions = localEntries.length;
 	await localCommands.get("board-manage").handler("", localCtx);
 	const finalBoard = localEntries.at(-1).data;
-	assert.equal(localEntries.length, entriesBeforeManagerActions + 6, "manager persists each real item mutation exactly once");
+	assert.equal(localEntries.length, entriesBeforeManagerActions + 4, "manager persists real item mutations exactly once and ignores removed hard/soft actions");
 	assert.equal(finalBoard.items.find((item) => item.id === "D1").status, "superseded", "manager can supersede the selected item");
 	assert.equal(finalBoard.items.find((item) => item.id === "D1").text, "Managed decision edited", "manager can edit selected item text before superseding");
 	assert.equal(finalBoard.items.at(-1).id, "D2", "manager supersede creates the next board item id");
