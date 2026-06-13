@@ -1,6 +1,6 @@
 {
   "name": "pi-live-decision-board",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Pi extension for a live, mutable assumptions and decisions board injected into agent context.",
   "type": "module",
   "license": "MIT",
