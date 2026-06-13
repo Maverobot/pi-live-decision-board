@@ -6,11 +6,6 @@ Entries are inferred from conventional git commit messages. Regenerate with `npm
 
 ## 0.1.3 - 2026-06-13
 
-### Changed
+### Fixed
 
-- hide board item keys in primary UI (ec00726)
-- simplify board lifecycle (035ec7a)
-
-### Documentation
-
-- clarify board item kinds (78cf388)
+- harden board archive-only workflows (57df195)
