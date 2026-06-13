@@ -1,7 +1,7 @@
-- [x] Add colors to keywords to increase readability
-- [x] Fix indentation, check how coctostan/pi-superpowers:plan-tracker.ts does it.
-- [x] Add line separator for the board to stand out as an individual section, not mixed with neighbouring widgets.
-- [x] Redundant board info at the bottom of the cli:
+- [X] Add colors to keywords to increase readability
+- [X] Fix indentation, check how coctostan/pi-superpowers:plan-tracker.ts does it.
+- [X] Add line separator for the board to stand out as an individual section, not mixed with neighbouring widgets.
+- [X] Redundant board info at the bottom of the cli:
 
  #+begin_src
 
@@ -10,14 +10,14 @@
    Board v6 • 2 assumptions • 4 decisions • 0 hard constraints
  #+end_src
 
-- [x] Add `/board-toggle` to collapse/expand the persistent widget body without changing board state.
-- [x] Rename `/board-show` to `/board-snapshot` so message snapshots are explicit.
-- [x] Add `/board-manage` keyboard UI for selecting and updating board items.
-- [x] Show all active board items in the visible widget and make `/board-toggle` collapse to the summary line.
+- [X] Add `/board-toggle` to collapse/expand the persistent widget body without changing board state.
+- [X] Rename `/board-show` to `/board-snapshot` so message snapshots are explicit.
+- [X] Add `/board-manage` keyboard UI for selecting and updating board items.
+- [X] Show all active board items in the visible widget and make `/board-toggle` collapse to the summary line.
 
-- [x] In which cases is an item made "hard"? Documented as enforced constraints only: explicit user constraints, safety-critical rules, architecture boundaries, or decisions that should block stale mutating tools.
+- [X] In which cases is an item made "hard"? Documented as enforced constraints only: explicit user constraints, safety-critical rules, architecture boundaries, or decisions that should block stale mutating tools.
 
-- [x] Add `/board-cleanup` MVP for user-confirmed board hygiene.
+- [X] Add `/board-cleanup` MVP for user-confirmed board hygiene.
 
 - [X] Why do we need "v18" in "Board • v18 • 4 assumptions • 11 decisions • 0 hard constraints"?
 
@@ -53,3 +53,8 @@
 - [X] Why do we need decisions in the board? Maybe we just need "Goals, Assumptions"? Decisions are getting more and more, so hard to manage.
 - [X] One subagent for the board cleanup is enough, don't need multiple subagents.
 - [X] What does low, medium etc mean in the board cleanup?
+- [ ] Rename them to low risk, medium risk and high risk for clarity.
+- [ ] Make the repo availabe on https://pi.dev/packages
+- [ ] Provide tools to remove item from the board so that the agent can remote deprecated items automatically. The ideal is that the user should seldom need to run /board-cleanup(-subagent) manually.
+- [ ] Add a changelog file to keep track of the changelog. Ideally the changelog can be infered from the git commit messages.
+- [ ] Readme says that archived items are in board history but I don't see the board history with / commands.
