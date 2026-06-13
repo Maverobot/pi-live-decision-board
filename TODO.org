@@ -49,7 +49,7 @@
 
 - [X] Not sure if "hard" brings much. Does it make sense to treat all items "hard"? I don't like to have "soft", which may or may not be considered. Don't just remove it. Let's talk about this design choice.
 - [X] "──────────────── Live Decision Board ────────────────" can be removed. Use indentation for the content of the board, e.g. Decisions are indented.
-- [X] What is difference between edit and supersede?
+- [X] What is difference between edit and archive-plus-add?
 - [X] Why do we need decisions in the board? Maybe we just need "Goals, Assumptions"? Decisions are getting more and more, so hard to manage.
 - [X] One subagent for the board cleanup is enough, don't need multiple subagents.
 - [X] What does low, medium etc mean in the board cleanup?
