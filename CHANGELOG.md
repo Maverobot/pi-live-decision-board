@@ -9,3 +9,7 @@ Entries are inferred from conventional git commit messages. Regenerate with `npm
 ### Changed
 
 - simplify board lifecycle (035ec7a)
+
+### Documentation
+
+- clarify board item kinds (78cf388)
