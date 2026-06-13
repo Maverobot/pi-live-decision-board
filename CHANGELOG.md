@@ -6,6 +6,6 @@ Entries are inferred from conventional git commit messages. Regenerate with `npm
 
 ## 0.1.2 - 2026-06-13
 
-### Fixed
+### Changed
 
-- make changelog check release tags (eb574ec)
+- simplify board lifecycle (035ec7a)
