@@ -80,9 +80,12 @@ assert.doesNotMatch(commands.get("assume").description, /soft|hard/i, "assume co
 assert.match(commands.get("decide").description, /active decision/i, "decide command should use active-item wording");
 assert.doesNotMatch(commands.get("decide").description, /soft|hard/i, "decide command should not expose legacy strength wording");
 assert.match(commands.get("board-manage").description, /primary/i, "board-manage should be described as the primary item-action UI");
+assert.match(commands.get("board-manage").description, /TUI/i, "board-manage should advertise that it needs TUI mode");
 assert.match(commands.get("board-manage").description, /\bclear\b/i, "board-manage should advertise clear after Task 2");
+assert.match(commands.get("board-cleanup").description, /TUI/i, "board-cleanup should advertise that it needs TUI mode");
 assert.match(commands.get("board-cleanup-subagent").description, /subagent/i, "board-cleanup-subagent should mention subagent assistance");
 assert.match(commands.get("board-cleanup-subagent").description, /recommend/i, "board-cleanup-subagent should mention recommendations");
+assert.match(commands.get("board-cleanup-subagent").description, /folded|user-confirmed/i, "board-cleanup-subagent help should mention folded/user-confirmed workflow");
 assert(messageRenderers.has("live-decision-board-cleanup-subagent-handoff"), "board-cleanup-subagent should register a folded custom message renderer");
 assert.match(commands.get("board-archive").description, /fallback/i, "board-archive should be documented as a fallback command");
 assert.match(commands.get("board-archive").description, /prefer\s+\/board-manage/i, "board-archive should prefer board-manage");
@@ -90,6 +93,7 @@ assert.equal(commands.has("board-reject"), false, "board-reject compatibility al
 assert.equal(commands.has("board-accept"), false, "board-accept should not be registered in active-vs-archived model");
 assert.equal(commands.has("board-supersede"), false, "board-supersede compatibility alias should not be registered");
 assert.match(commands.get("board-clear").description, /fallback/i, "board-clear should be documented as a fallback command");
+assert.match(commands.get("board-clear").description, /archive.*active|active.*archive/i, "board-clear should describe archive-only clear semantics");
 assert.match(commands.get("board-clear").description, /prefer\s+\/board-manage/i, "board-clear should prefer board-manage once manager clear exists");
 
 assert.match(commands.get("board-hard").description, /active board items are enforced automatically/i, "board-hard help should say it is compatibility-only");
@@ -293,7 +297,9 @@ assert.equal(blockedAfterRestore.block, true, "restoring falls back past malform
 
 await events.get("context")({ messages: [{ role: "user", content: "Sync restored board", timestamp: 5 }] }, ctx);
 await commands.get("board-clear").handler("", ctx);
-assert.equal(entries.at(-1).data.items.length, 0, "board-clear persists an empty board");
+assert.equal(entries.at(-1).data.items.length, 2, "board-clear retains board history");
+assert.deepEqual(entries.at(-1).data.items.map((item) => item.status), ["archived", "archived"], "board-clear archives active items instead of deleting them");
+assert.equal(latestWidget, undefined, "archived-only boards hide the persistent widget");
 const clearContextResult = await events.get("context")(
 	{ messages: [{ role: "user", content: "Continue after clear", timestamp: 6 }] },
 	ctx,
@@ -448,6 +454,70 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 }
 
 {
+	const localCommands = new Map();
+	const localEvents = new Map();
+	const localEntries = [];
+	let localTool;
+	const localCtx = {
+		hasUI: true,
+		isIdle: () => true,
+		sessionManager: { getBranch: () => [] },
+		ui: {
+			theme: { fg: (_color, text) => text },
+			setStatus: () => {},
+			setWidget: () => {},
+			notify: () => {},
+			confirm: async () => true,
+			editor: async (_title, initial) => initial,
+		},
+	};
+
+	extension({
+		on(eventName, callback) {
+			localEvents.set(eventName, callback);
+		},
+		registerCommand(name, def) {
+			localCommands.set(name, def);
+		},
+		registerTool(tool) {
+			localTool = tool;
+		},
+		appendEntry(customType, data) {
+			localEntries.push({ type: "custom", customType, data });
+		},
+		sendMessage() {},
+	});
+
+	await localEvents.get("session_start")({}, localCtx);
+	await localCommands.get("decide").handler("Original active decision", localCtx);
+	const originalD1 = localEntries.at(-1).data.items.find((item) => item.id === "D1");
+	await assert.rejects(
+		() => localTool.execute("update-missing-version", { action: "update", id: "D1", text: "Missing version edit" }, undefined, undefined, localCtx),
+		/update requires itemVersion/,
+		"direct update requires an itemVersion freshness guard",
+	);
+	await assert.rejects(
+		() => localTool.execute("update-stale-version", { action: "update", id: "D1", itemVersion: originalD1.version + 1, text: "Stale edit" }, undefined, undefined, localCtx),
+		/changed since it was observed/,
+		"direct update rejects stale item versions",
+	);
+	const updateResult = await localTool.execute(
+		"update-current-version",
+		{ action: "update", id: "D1", itemVersion: originalD1.version, text: "Corrected active decision" },
+		undefined,
+		undefined,
+		localCtx,
+	);
+	assert.match(updateResult.content[0].text, /Updated D1/);
+	assert.equal(localEntries.at(-1).data.items.find((item) => item.id === "D1")?.text, "Corrected active decision");
+	await assert.rejects(
+		() => localTool.execute("update-old-version", { action: "update", id: "D1", itemVersion: originalD1.version, text: "Overwrite newer edit" }, undefined, undefined, localCtx),
+		/changed since it was observed/,
+		"direct update cannot overwrite a newer board item edit",
+	);
+}
+
+{
 	let nonTuiNotification = "";
 	await commands.get("board-manage").handler("", {
 		...ctx,
@@ -481,6 +551,52 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 		},
 	});
 	assert.match(cleanupNonTuiNotification, /requires TUI mode/, "board-cleanup should explain that it needs TUI mode");
+}
+
+{
+	const localCommands = new Map();
+	const localEvents = new Map();
+	const localEntries = [];
+	let latestNotification = "";
+	const localCtx = {
+		mode: "rpc",
+		hasUI: false,
+		isIdle: () => true,
+		sessionManager: { getBranch: () => [] },
+		ui: {
+			theme: { fg: (_color, text) => text },
+			setStatus: () => {},
+			setWidget: () => {},
+			notify: (message) => {
+				latestNotification = message;
+			},
+			confirm: async () => {
+				throw new Error("board-clear should not bypass confirmation in non-UI mode");
+			},
+			editor: async (_title, initial) => initial,
+		},
+	};
+
+	extension({
+		on(eventName, callback) {
+			localEvents.set(eventName, callback);
+		},
+		registerCommand(name, def) {
+			localCommands.set(name, def);
+		},
+		registerTool() {},
+		appendEntry(customType, data) {
+			localEntries.push({ type: "custom", customType, data });
+		},
+		sendMessage() {},
+	});
+
+	await localEvents.get("session_start")({}, localCtx);
+	await localCommands.get("decide").handler("Non-UI clear must not mutate", localCtx);
+	const entriesBeforeClear = localEntries.length;
+	await localCommands.get("board-clear").handler("", localCtx);
+	assert.equal(localEntries.length, entriesBeforeClear, "board-clear should not mutate without a UI confirmation surface");
+	assert.match(latestNotification, /requires UI mode|requires an interactive confirmation/i, "board-clear should explain non-UI confirmation requirements");
 }
 
 {
@@ -757,6 +873,49 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 	const entriesBeforeCleanup = cleanupEntries.length;
 	await cleanupCommands.get("board-cleanup").handler("", cleanupCtx);
 	assert.equal(cleanupEntries.length, entriesBeforeCleanup, "cleanup cancel should persist nothing");
+}
+
+{
+	const cleanupCommands = new Map();
+	const cleanupEvents = new Map();
+	const cleanupEntries = [];
+	const cleanupCtx = {
+		mode: "tui",
+		hasUI: true,
+		isIdle: () => true,
+		sessionManager: { getBranch: () => [] },
+		ui: {
+			theme: { fg: (_color, text) => text },
+			setStatus: () => {},
+			setWidget: () => {},
+			notify: () => {},
+			confirm: async () => {
+				throw new Error("dismissed cleanup should not ask for confirmation");
+			},
+			editor: async (_title, initial) => initial,
+			custom: async () => undefined,
+		},
+	};
+
+	extension({
+		on(eventName, callback) {
+			cleanupEvents.set(eventName, callback);
+		},
+		registerCommand(name, def) {
+			cleanupCommands.set(name, def);
+		},
+		registerTool() {},
+		appendEntry(customType, data) {
+			cleanupEntries.push({ type: "custom", customType, data });
+		},
+		sendMessage() {},
+	});
+
+	await cleanupEvents.get("session_start")({}, cleanupCtx);
+	await cleanupCommands.get("decide").handler("Apply Round 12 review fixes", cleanupCtx);
+	const entriesBeforeCleanup = cleanupEntries.length;
+	await cleanupCommands.get("board-cleanup").handler("", cleanupCtx);
+	assert.equal(cleanupEntries.length, entriesBeforeCleanup, "cleanup overlay dismissal should cancel without persisting");
 }
 
 {
@@ -1748,18 +1907,20 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 	await localEvents.get("session_start")({}, localCtx);
 	await localCommands.get("assume").handler("Managed assumption", localCtx);
 	await localCommands.get("decide").handler("Managed decision", localCtx);
+	await localCommands.get("goal").handler("Managed goal", localCtx);
 	await localCommands.get("board-manage").handler("", localCtx);
 	assert.match(rendered[0], /Live Decision Board Manager/, "board-manage should render a titled keyboard UI");
-	assert.match(rendered[0], /> active Managed decision/, "manager initially selects the first sorted decision without showing item keys");
+	assert.match(rendered[0], /> goal active Managed goal/, "manager initially selects the active goal and shows kind context without item keys");
+	assert.match(rendered[0], /decision active Managed decision/, "manager rows include kind labels now that item keys are hidden");
 	assert.doesNotMatch(rendered[0], /\[[GAD]\d+]/, "manager hides item keys in primary UI");
 	assert.match(rendered[0], /e edit/, "manager renders keyboard help");
 	assert.match(rendered[0], /edit rewrites item text/i, "manager help should explain edit semantics");
 	assert.match(rendered[0], /archive keeps history/i, "manager help should explain archive semantics");
 	assert.doesNotMatch(rendered[0], /supersede/i, "manager help should not expose supersede actions");
-	assert.match(rendered[0], /c clear/, "manager help should expose clear action");
+	assert.match(rendered[0], /c clear active/, "manager help should expose archive-only clear action");
 	assert.doesNotMatch(rendered[0], /\bh hard\b/, "manager help should not show harden action");
 	assert.doesNotMatch(rendered[0], /\bs soft\b/, "manager help should not show soften action");
-	assert.match(rendered[1], /> active Managed assumption/, "j/down moves selection to the next item without showing item keys");
+	assert.match(rendered[1], /> decision active Managed decision/, "j/down moves selection to the next item without showing item keys");
 }
 
 {
@@ -1819,11 +1980,12 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 	await localCommands.get("decide").handler("Manager clear decision", localCtx);
 	const entriesBeforeClear = localEntries.length;
 	await localCommands.get("board-manage").handler("", localCtx);
-	assert.equal(confirmTitle, "Clear Live Decision Board?");
-	assert.match(confirmMessage, /This clears the current goal, assumptions, and decisions for this branch\./);
+	assert.equal(confirmTitle, "Clear Active Board?");
+	assert.match(confirmMessage, /archives all active goal, assumptions, and decisions/i);
 	assert.equal(localEntries.length, entriesBeforeClear + 1, "manager clear persists exactly once after confirmation");
-	assert.deepEqual(localEntries.at(-1).data.items, [], "manager clear removes all board items");
-	assert.match(latestNotification, /Cleared board/);
+	assert.equal(localEntries.at(-1).data.items.length, 2, "manager clear retains board history");
+	assert.deepEqual(localEntries.at(-1).data.items.map((item) => item.status), ["archived", "archived"], "manager clear archives active board items");
+	assert.match(latestNotification, /Cleared active board/);
 }
 
 {
@@ -1918,6 +2080,54 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 	const localCommands = new Map();
 	const localEvents = new Map();
 	const localEntries = [];
+	let rendered = "";
+	const localCtx = {
+		mode: "tui",
+		hasUI: true,
+		isIdle: () => true,
+		sessionManager: { getBranch: () => [] },
+		ui: {
+			theme: { fg: (_color, text) => text },
+			setStatus: () => {},
+			setWidget: () => {},
+			notify: () => {},
+			confirm: async () => true,
+			editor: async (_title, initial) => initial,
+			custom: async (factory) => {
+				let result;
+				const component = factory({ requestRender: () => {} }, { fg: (_color, text) => text }, {}, (value) => {
+					result = value;
+				});
+				rendered = component.render(100).join("\n");
+				component.handleInput("q");
+				return result;
+			},
+		},
+	};
+
+	extension({
+		on(eventName, callback) {
+			localEvents.set(eventName, callback);
+		},
+		registerCommand(name, def) {
+			localCommands.set(name, def);
+		},
+		registerTool() {},
+		appendEntry(customType, data) {
+			localEntries.push({ type: "custom", customType, data });
+		},
+		sendMessage() {},
+	});
+
+	await localEvents.get("session_start")({}, localCtx);
+	await localCommands.get("board-manage").handler("", localCtx);
+	assert.match(rendered, /Use \/goal, \/assume, or \/decide/, "empty manager guidance should mention every quick-capture command");
+}
+
+{
+	const localCommands = new Map();
+	const localEvents = new Map();
+	const localEntries = [];
 	const testTheme = { fg: (_color, text) => text };
 	const queuedKeys = ["s", "q"];
 	const localCtx = {
@@ -1970,6 +2180,7 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 	const testTheme = { fg: (_color, text) => text };
 	const queuedKeys = ["h", "s", "r", "a", "e", "u", "q"];
 	const editorTexts = ["Managed decision edited"];
+	let editorTitle = "";
 	const localCtx = {
 		mode: "tui",
 		hasUI: true,
@@ -1981,7 +2192,10 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 			setWidget: () => {},
 			notify: () => {},
 			confirm: async () => true,
-			editor: async () => editorTexts.shift(),
+			editor: async (title) => {
+				editorTitle = title;
+				return editorTexts.shift();
+			},
 			custom: async (factory) => {
 				let result;
 				const component = factory({ requestRender: () => {} }, testTheme, {}, (value) => {
@@ -2015,6 +2229,7 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 	assert.equal(localEntries.length, entriesBeforeManagerActions + 2, "manager persists archive/edit exactly once and ignores removed compatibility actions");
 	assert.equal(finalBoard.items.find((item) => item.id === "D1").status, "archived", "manager keeps archived items archived without an accept action");
 	assert.equal(finalBoard.items.find((item) => item.id === "D1").text, "Managed decision edited", "manager can edit selected item text");
+	assert.equal(editorTitle, "Edit decision", "manager edit title hides item keys while preserving kind context");
 	assert.equal(finalBoard.items.length, 1, "manager no longer creates extra items");
 }
 

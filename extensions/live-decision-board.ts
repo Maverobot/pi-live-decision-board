@@ -67,16 +67,16 @@ export function createEmptyBoard(): BoardState {
 }
 
 export function clearBoard(board: BoardState): BoardState {
+	if (!board.items.some(isActiveItem)) return board;
 	const nextVersion = board.version + 1;
+	const timestamp = now();
 	return {
+		...board,
 		version: nextVersion,
-		hardDecisionBarrierVersion: board.items.some(isEnforcedItem)
-			? nextVersion
-			: getHardDecisionBarrierVersion(board),
-		nextGoalId: 1,
-		nextAssumptionId: 1,
-		nextDecisionId: 1,
-		items: [],
+		hardDecisionBarrierVersion: nextVersion,
+		items: board.items.map((item) => isActiveItem(item)
+			? { ...item, status: "archived" as const, version: nextVersion, updatedAt: timestamp }
+			: item),
 	};
 }
 
@@ -280,7 +280,7 @@ function cleanupBase(item: BoardItem): Omit<CleanupRecommendation, "action" | "s
 }
 
 function looksHistorical(text: string): boolean {
-	return /\b(apply round \d+|review fixes|implemented|after the next review round|rename[sd]? \/|add \/board-|fix(?:ed)? .*review|completed|pushed|installed cache)\b/i.test(text);
+	return /\b(apply round \d+|review fixes|after the next review round|rename[sd]? \/|add \/board-|fix(?:ed)? .*review|completed|pushed|installed cache|ran (?:npm )?(?:test|tests|typecheck|lint)|npm test|typecheck passed|lint passed)\b/i.test(text);
 }
 
 function isCleanupAction(value: unknown): value is CleanupAction {
@@ -866,15 +866,21 @@ export function parseBoardMarkdown(markdown: string, previousBoard: BoardState):
 	if (items.filter(isActiveGoal).length > 1) {
 		throw new Error("Live Decision Board can have only one active goal");
 	}
+	const parsedIds = new Set(items.map((item) => item.id));
+	for (const previous of previousBoard.items) {
+		if (!parsedIds.has(previous.id)) {
+			throw new Error(`Board markdown cannot omit existing board item ${previous.id}; archive it instead`);
+		}
+	}
 
 	return {
 		version: nextVersion,
 		hardDecisionBarrierVersion: hasEnforcedBoundaryChanged(previousBoard.items, items)
 			? nextVersion
 			: getHardDecisionBarrierVersion(previousBoard),
-		nextGoalId: maxGoalId + 1,
-		nextAssumptionId: maxAssumptionId + 1,
-		nextDecisionId: maxDecisionId + 1,
+		nextGoalId: Math.max(previousBoard.nextGoalId, maxGoalId + 1),
+		nextAssumptionId: Math.max(previousBoard.nextAssumptionId, maxAssumptionId + 1),
+		nextDecisionId: Math.max(previousBoard.nextDecisionId, maxDecisionId + 1),
 		items,
 	};
 }
@@ -1137,9 +1143,15 @@ type CleanupReviewResult = { type: "cancel" } | { type: "apply"; recommendations
 function compareManagerItems(a: BoardItem, b: BoardItem): number {
 	const activeRank = Number(isActiveItem(b)) - Number(isActiveItem(a));
 	if (activeRank !== 0) return activeRank;
-	const kindRank = Number(a.kind === "assumption") - Number(b.kind === "assumption");
+	const kindRank = managerKindRank(a.kind) - managerKindRank(b.kind);
 	if (kindRank !== 0) return kindRank;
 	return compareWidgetItems(a, b);
+}
+
+function managerKindRank(kind: BoardKind): number {
+	if (kind === "goal") return 0;
+	if (kind === "decision") return 1;
+	return 2;
 }
 
 class BoardManagerComponent {
@@ -1193,7 +1205,7 @@ class BoardManagerComponent {
 		];
 
 		if (this.items.length === 0) {
-			lines.push(truncateToWidth(this.theme.fg("dim", "No board items yet. Use /assume or /decide to add one."), width));
+			lines.push(truncateToWidth(this.theme.fg("dim", "No board items yet. Use /goal, /assume, or /decide to add one."), width));
 		} else {
 			for (const [index, item] of this.items.entries()) {
 				lines.push(this.renderItem(item, index, width));
@@ -1202,8 +1214,8 @@ class BoardManagerComponent {
 
 		lines.push(
 			"",
-			truncateToWidth(this.theme.fg("dim", "↑↓/j/k select • enter/e edit • r archive • c clear • q/esc close"), width),
-			truncateToWidth(this.theme.fg("dim", "edit rewrites item text • archive keeps history"), width),
+			truncateToWidth(this.theme.fg("dim", "↑↓/j/k select • enter/e edit • r archive • c clear active • q/esc close"), width),
+			truncateToWidth(this.theme.fg("dim", "edit rewrites item text • clear/archive keeps history"), width),
 		);
 		this.cachedWidth = width;
 		this.cachedLines = lines;
@@ -1223,10 +1235,11 @@ class BoardManagerComponent {
 	private renderItem(item: BoardItem, index: number, width: number): string {
 		const selected = index === this.selectedIndex;
 		const marker = selected ? this.theme.fg("accent", ">") : " ";
+		const kind = this.theme.fg("accent", item.kind);
 		const statusColor = item.status === "active" ? "success" : "dim";
 		const status = this.theme.fg(statusColor, item.status);
 		const text = isActiveItem(item) ? this.theme.fg("muted", item.text) : this.theme.fg("dim", item.text);
-		return truncateToWidth(`${marker} ${status} ${text}`, width);
+		return truncateToWidth(`${marker} ${kind} ${status} ${text}`, width);
 	}
 
 	private moveSelection(delta: number): void {
@@ -1417,7 +1430,7 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 
 	function updateUi(ctx: ExtensionContext): void {
 		ctx.ui.setStatus("decision-board", undefined);
-		if (board.items.length === 0) {
+		if (activeBoardItems(board).length === 0) {
 			ctx.ui.setWidget("decision-board", undefined);
 			return;
 		}
@@ -1563,7 +1576,7 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 
 	async function editBoardManagerItem(ctx: ExtensionContext, item: BoardItem): Promise<void> {
 		const baseEpoch = boardEpoch;
-		const edited = await ctx.ui.editor(`Edit ${item.id}`, item.text);
+		const edited = await ctx.ui.editor(`Edit ${item.kind}`, item.text);
 		if (!edited || edited.trim() === item.text.trim()) return;
 		if (boardEpoch !== baseEpoch) {
 			ctx.ui.notify("Live Decision Board changed while item editor was open; reopen /board-manage and apply your edit to the latest board.", "warning");
@@ -1574,18 +1587,20 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 
 	async function confirmAndClearBoard(ctx: ExtensionContext, staleMessage: string): Promise<void> {
 		const baseEpoch = boardEpoch;
-		if (ctx.hasUI) {
-			const confirmed = await ctx.ui.confirm(
-				"Clear Live Decision Board?",
-				"This clears the current goal, assumptions, and decisions for this branch.",
-			);
-			if (!confirmed) return;
-			if (boardEpoch !== baseEpoch) {
-				ctx.ui.notify(staleMessage, "warning");
-				return;
-			}
+		if (!ctx.hasUI) {
+			ctx.ui.notify("/board-clear requires UI mode for interactive confirmation.", "error");
+			return;
 		}
-		safeApplyBoard(ctx, "Cleared board", () => clearBoard(board));
+		const confirmed = await ctx.ui.confirm(
+			"Clear Active Board?",
+			"This archives all active goal, assumptions, and decisions for this branch while keeping board history.",
+		);
+		if (!confirmed) return;
+		if (boardEpoch !== baseEpoch) {
+			ctx.ui.notify(staleMessage, "warning");
+			return;
+		}
+		safeApplyBoard(ctx, "Cleared active board", () => clearBoard(board));
 	}
 
 	type CleanupReviewRunResult = {
@@ -1608,7 +1623,7 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 			(tui, theme, _keybindings, done) => new BoardCleanupComponent(recommendations, theme, done, () => tui.requestRender()),
 			{ overlay: true, overlayOptions: { width: "90%", minWidth: 70, maxHeight: "80%" } },
 		);
-		if (result.type === "cancel") return { changed: false, appliedRecommendations: 0 };
+		if (!result || result.type === "cancel") return { changed: false, appliedRecommendations: 0 };
 		if (boardEpoch !== baseEpoch) {
 			ctx.ui.notify(staleMessage, "warning");
 			return { changed: false, appliedRecommendations: 0 };
@@ -1680,7 +1695,7 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 	});
 
 	pi.registerCommand("board-manage", {
-		description: "Primary UI for live board item actions: edit, archive, or clear",
+		description: "Primary TUI for live board item actions: edit, archive, or clear active",
 		handler: async (_args, ctx) => {
 			if (ctx.mode !== "tui") return ctx.ui.notify("/board-manage requires TUI mode", "error");
 			await manageBoard(ctx);
@@ -1688,7 +1703,7 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 	});
 
 	pi.registerCommand("board-cleanup", {
-		description: "Review and archive historical board items with confirmation",
+		description: "TUI review of active board items with user-confirmed archive cleanup",
 		handler: async (_args, ctx) => {
 			if (ctx.mode !== "tui") return ctx.ui.notify("/board-cleanup requires TUI mode", "error");
 			await cleanupBoard(ctx);
@@ -1696,7 +1711,7 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 	});
 
 	pi.registerCommand("board-cleanup-subagent", {
-		description: "Start read-only subagent-assisted cleanup recommendations for the live board",
+		description: "Start or queue a folded handoff for read-only subagent cleanup recommendations; apply remains user-confirmed",
 		handler: async (_args, ctx) => {
 			const activeItems = activeBoardItems(board);
 			if (activeItems.length === 0) {
@@ -1767,7 +1782,7 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 	});
 
 	pi.registerCommand("board-clear", {
-		description: "Power-user fallback: clear the live board after confirmation; prefer /board-manage",
+		description: "Power-user fallback: archive all active board items after confirmation; prefer /board-manage",
 		handler: async (_args, ctx) => {
 			await confirmAndClearBoard(ctx, "Live Decision Board changed while confirmation was open; rerun /board-clear on the latest board.");
 		},
@@ -1801,6 +1816,7 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 						"Use decision_board as a current-context contract, not as an implementation log for progress updates, tests run, files changed, or completed review batches.",
 			"Use a single read-only recommendation subagent for future board cleanup runs; do not launch multiple parallel board-cleanup recommendation subagents unless explicitly requested.",
 			"After /board-cleanup-subagent recommendations are prepared, call decision_board.review_cleanup with the recommendation objects for interactive review.",
+			"Use decision_board update only for same-meaning text corrections after listing the current board; include the observed itemVersion.",
 			"Use decision_board archive only for routine deprecated or stale active items after listing the current board; include the observed itemVersion and a reason, and prefer review_cleanup when current-context impact is ambiguous.",
 			"Avoid using ask_user for subagent recommendations; invoke review_cleanup and let that workflow handle interactive confirmation before mutation.",
 		],
@@ -1902,6 +1918,11 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 			let nextBoard: BoardState;
 			if (params.action === "update") {
 				if (!params.text?.trim()) throw new Error("decision_board update requires non-empty text");
+				if (typeof params.itemVersion !== "number") throw new Error("decision_board update requires itemVersion from the current board listing");
+				const current = board.items.find((item) => item.id === targetId);
+				if (!current) throw new Error(`Board item not found: ${targetId}`);
+				if (!Number.isInteger(params.itemVersion) || params.itemVersion <= 0) throw new Error("decision_board update requires a current positive itemVersion");
+				if (current.version !== params.itemVersion) throw new Error(`Board item ${targetId} changed since it was observed`);
 				nextBoard = updateBoardItem(board, targetId, { text: params.text });
 			} else if (params.action === "set_strength") {
 				return {
@@ -1926,7 +1947,7 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 
 	pi.on("context", async (event) => {
 		const filtered = event.messages.filter((message) => !BOARD_CONTEXT_TYPES.has(getCustomType(message)));
-		if (board.items.length === 0 && !hasUninjectedEnforcedChanges(board, lastInjectedBoardVersion)) {
+		if (activeBoardItems(board).length === 0 && !hasUninjectedEnforcedChanges(board, lastInjectedBoardVersion)) {
 			return { messages: filtered };
 		}
 		lastInjectedBoardVersion = board.version;

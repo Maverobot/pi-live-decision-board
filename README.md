@@ -28,11 +28,11 @@ pi -e .
 
 | Command | Purpose |
 | --- | --- |
-| `/board-manage` | Primary keyboard workflow for selecting board items and editing, archiving, or clearing them |
+| `/board-manage` | TUI-only primary keyboard workflow for selecting board items and editing, archiving, or clearing active items |
 | `/goal <text>` | Quick capture: set the single current goal |
 | `/assume <text>` | Quick capture: add an active assumption |
 | `/decide <text>` | Quick capture: add an active decision |
-| `/board-cleanup` | Review active board items and archive obvious historical entries after confirmation |
+| `/board-cleanup` | TUI-only review of active board items and archive obvious historical entries after confirmation |
 | `/board-cleanup-subagent` | Start or queue a folded handoff for read-only subagent-assisted cleanup recommendations; apply remains user-confirmed |
 | `/board-snapshot` | Show the active board context snapshot as a visible message |
 | `/board-history` | Show active plus inactive archived board history as a visible message |
@@ -44,7 +44,7 @@ pi -e .
 | --- | --- |
 | `/board` | Power-user editor for the live board markdown |
 | `/board-archive <id>` | Power-user fallback to archive an item by id; prefer `/board-manage` |
-| `/board-clear` | Power-user fallback to clear the board after confirmation; prefer `/board-manage` |
+| `/board-clear` | Power-user fallback to archive all active board items after confirmation; prefer `/board-manage` |
 | `/board-hard <id>` | Deprecated compatibility no-op: active-item enforcement now ignores hard/soft commands |
 | `/board-soft <id>` | Deprecated compatibility no-op: active-item enforcement now ignores hard/soft commands |
 
@@ -59,6 +59,8 @@ The extension registers a `decision_board` tool with actions:
 - `archive`
 - `review_cleanup`
 
+`update` is for same-meaning text corrections only. It requires the item id and observed `itemVersion` from the current board listing; stale item versions are refused. Semantic changes should use archive plus add instead.
+
 `archive` lets the current agent directly archive a routine deprecated or stale active item: the item leaves active context but remains retained in board history. It requires the item id, the observed `itemVersion` from the current board listing, and a reason; stale item versions are refused.
 
 `review_cleanup` accepts subagent recommendations from read-only cleanup helpers and opens the cleanup manager UI for interactive review and confirmation before applying anything.
@@ -71,7 +73,7 @@ Prompt guidance tells the model to keep one current goal plus assumptions and de
 - The widget shows a compact summary followed by indented Goal, Decisions, and Assumptions sections with all active items by default; `/board-toggle` collapses the body while keeping the summary line visible. Item keys are hidden in the primary widget to reduce visual noise. Footer status and titled separator lines are intentionally suppressed to avoid duplicate or noisy board chrome.
 - `/board-snapshot` records the active context view (active items plus board rules) as a visible message.
 - `/board-history` records a visible board-history view with active items plus inactive archived items retained after archive or cleanup actions.
-- `/board-manage` is the primary TUI mutation UI for existing board items: `↑↓/j/k` select, `enter/e` edit, `r` archive, `c` clear, `q/esc` close. It hides item keys by default because actions are selection-based. Edit rewrites the selected item text in place; archive removes the item from active context while retaining history. When old guidance is no longer current, archive it; if new current guidance is needed, add a new goal, assumption, or decision.
+- `/board-manage` is the primary TUI mutation UI for existing board items: `↑↓/j/k` select, `enter/e` edit, `r` archive, `c` clear active, `q/esc` close. It hides item keys by default because actions are selection-based, but rows include item kind for context. Edit rewrites the selected item text in place; archive and clear-active remove items from active context while retaining history. When old guidance is no longer current, archive it; if new current guidance is needed, add a new goal, assumption, or decision.
 - `/board-cleanup` lets users manually select any active item for archive: `space` toggles the selected row, and toggling a keep/review row marks it as an archive override before `enter` opens the confirmation.
 - Item keys remain available in `/board-history`, cleanup review, markdown, and item-targeted slash commands for precise references, but the keyboard manager is the preferred workflow.
 - The `context` hook removes stale board-generated context and injects exactly one fresh board snapshot into provider requests.
@@ -120,7 +122,7 @@ Bad active board items:
 - "Ran npm test."
 - "Renamed `/board-show` to `/board-snapshot`."
 
-Use `/board-cleanup` to review active items and archive obvious historical entries. Archive removes an item from active context while retaining it in board history. Use `/board-history` to inspect retained inactive items.
+Use `/board-cleanup` to review active items and archive obvious historical entries. Archive removes an item from active context while retaining it in board history. Clear-active workflows archive all active items instead of deleting history. Use `/board-history` to inspect retained inactive items.
 
 For routine, clearly deprecated items, the current agent can call `decision_board` with `action: "archive"` after listing the current board. Direct archive requires the current item version and a reason, and should not be used for ambiguous current-context decisions; use `/board-cleanup` or `review_cleanup` instead when judgment is needed.
 

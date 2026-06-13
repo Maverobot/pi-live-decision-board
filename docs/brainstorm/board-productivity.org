@@ -84,7 +84,7 @@ The board now treats every active item as enforced context; archived items are r
 | Compatibility strength | Legacy `soft`/`hard` field in existing markdown/state payloads | Ignored for enforcement |
 | Archived | First-class status for removing a once-useful item from active context without saying it was false | Inactive retained state visible via =/board-history= |
 | Documented | Product fact belongs in README/design docs, not active board | Docs become source of truth |
-| Delete | Permanent removal | Explicit confirmation only; not default cleanup |
+| Delete | Permanent removal | Not supported in the current product; archive instead |
 
 ** Archive status
 "Archive" is the UX word and persisted status for historical-but-not-false items. Routine cleanup has one inactive state: archived.
@@ -221,7 +221,7 @@ Rows should show:
 - status
 - strength
 - current text
-- proposed action
+- recommended action
 - reason
 - risk level
 
@@ -315,7 +315,7 @@ Bulk apply is allowed only for low-risk historical cleanup.
 Per-item confirmation is required for:
 
 - active item archival or clearing
-- hard delete
+- permanent delete (not supported in the current product; archive instead)
 - compatibility strength changes, if any future workflow reintroduces them
 - ambiguous items
 - merge/archive-plus-add of multiple items
@@ -413,7 +413,7 @@ Risk levels estimate the chance that a recommendation would remove or rewrite st
 
 Confidence is separate from risk: confidence records evidence strength for the recommendation; risk records potential harm if the recommendation is wrong.
 
-Defer merge, compatibility strength edits, and delete to later workflows.
+Defer merge and compatibility strength edits to later workflows. Permanent delete is not supported in the current product; archive instead.
 
 * Proactive hygiene policy
 Proactive cleanup suggestions must be passive.

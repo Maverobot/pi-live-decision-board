@@ -209,6 +209,14 @@ const legacyHardHistorical = mod.recommendBoardCleanup(legacyHardHistoricalBoard
 assert(legacyHardHistorical, "legacy hard historical text is recommended for cleanup");
 assert.equal(legacyHardHistorical.action, "archive", "legacy hard strength does not prevent historical cleanup suggestions");
 assert.equal(legacyHardHistorical.selected, true, "historical cleanup suggestions are preselected");
+const ranTestsCleanupBoard = mod.addBoardItem(mod.createEmptyBoard(), { kind: "decision", text: "Ran npm test" });
+const ranTestsRecommendation = mod.recommendBoardCleanup(ranTestsCleanupBoard)[0];
+assert.equal(ranTestsRecommendation.action, "archive", "cleanup should recognize test-run progress notes as historical clutter");
+assert.equal(ranTestsRecommendation.selected, true, "test-run progress notes are safe archive suggestions");
+const ambiguousImplementedCleanupBoard = mod.addBoardItem(mod.createEmptyBoard(), { kind: "decision", text: "Implemented fallback remains required" });
+const ambiguousImplementedRecommendation = mod.recommendBoardCleanup(ambiguousImplementedCleanupBoard)[0];
+assert.equal(ambiguousImplementedRecommendation.action, "keep", "cleanup should not auto-archive ambiguous current guidance just because it says implemented");
+assert.equal(ambiguousImplementedRecommendation.selected, false);
 
 const inactiveCleanupBoard = mod.updateBoardItem(cleanupBoard, "D1", { status: "archived" });
 assert(!mod.recommendBoardCleanup(inactiveCleanupBoard).some((rec) => rec.id === "D1"), "inactive items are not recommended");
@@ -284,9 +292,14 @@ assert.equal(archivedAndAdded.items.find((item) => item.id === "D1").status, "ar
 assert.match(mod.formatBoardHistory(archivedAndAdded), /\[D1\].*archived/, "board history exposes archived items");
 assert.equal(archivedAndAdded.items.at(-1).id, "D2");
 
-const cleared = mod.clearBoard(withDecision);
-assert.equal(cleared.version, 3, "clearing keeps versions monotonic");
-assert.deepEqual(cleared.items, []);
+const withArchivedHistory = mod.archiveBoardItem(withDecision, "A1", withDecision.items.find((item) => item.id === "A1").version);
+const cleared = mod.clearBoard(withArchivedHistory);
+assert.equal(cleared.version, withArchivedHistory.version + 1, "clearing active items keeps versions monotonic");
+assert.equal(cleared.nextAssumptionId, withArchivedHistory.nextAssumptionId, "clearing preserves assumption id counters");
+assert.equal(cleared.nextDecisionId, withArchivedHistory.nextDecisionId, "clearing preserves decision id counters");
+assert.equal(cleared.items.length, withArchivedHistory.items.length, "clearing archives active items instead of deleting history");
+assert.deepEqual(cleared.items.map((item) => item.status), ["archived", "archived"], "clearing leaves all retained items archived");
+assert.equal(mod.clearBoard(cleared), cleared, "clearing a board with no active items is a no-op");
 
 assert.match(mod.formatBoardStatus(withDecision), /Board v2 • 1 assumption • 1 decision/);
 assert.match(mod.formatBoardStatus(withSecondGoal), /Board v4 • 1 goal • 1 assumption • 1 decision/);
@@ -432,6 +445,14 @@ const parsed = mod.parseBoardMarkdown(markdown.replace("soft", "hard"), withDeci
 assert.equal(parsed.items.find((item) => item.id === "A1").strength, "hard");
 assert.equal(parsed.version, withDecision.version + 1);
 assert.equal(parsed.items.find((item) => item.id === "A1").version, parsed.version, "changed items get new item version");
+assert.throws(
+	() => mod.parseBoardMarkdown(markdown.replace(/\n- D1 \|.*\n/, "\n"), withDecision),
+	/cannot omit existing board item D1/i,
+	"markdown edits cannot silently delete existing board items",
+);
+const highCounterBoard = { ...withDecision, nextDecisionId: 5 };
+const highCounterParsed = mod.parseBoardMarkdown(mod.serializeBoardMarkdown(highCounterBoard), highCounterBoard);
+assert.equal(highCounterParsed.nextDecisionId, 5, "markdown edits preserve previously advanced id counters");
 const multilineBoard = mod.addBoardItem(board, {
 	kind: "assumption",
 	text: "Line one\nline two",
