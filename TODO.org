@@ -58,3 +58,4 @@
 - [X] Provide archive tools so agents can archive deprecated items automatically. The ideal is that the user should seldom need to run /board-cleanup(-subagent) manually.
 - [X] Add a changelog file to keep track of the changelog. Ideally the changelog can be infered from the git commit messages.
 - [X] Readme says that archived items are in board history but I don't see the board history with / commands.
+- [X] Decisions, Goal, assumptions. Are they mutually exclusive? Are they convertable to each other? Yes: Goal, Assumption, and Decision are mutually exclusive item kinds. The primary workflow does not convert between kinds; archive the old item and add the new kind to preserve history.

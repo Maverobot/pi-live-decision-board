@@ -100,6 +100,8 @@ Every item on the active board is enforced as current context. The agent should 
 
 There is at most one active Goal. Use it for the current objective. Use Assumptions for uncertain or contextual facts, and Decisions for durable choices or constraints that should guide future work. Archive Decisions once they become historical implementation details.
 
+Goal, Assumption, and Decision are mutually exclusive item kinds. The primary workflow does not convert an existing item between kinds; if an item belongs in a different section, archive the old item and add the new Goal, Assumption, or Decision so history remains clear.
+
 The legacy `soft`/`hard` strength field may appear in older session data and markdown exports. It is retained for compatibility only and does not affect enforcement.
 
 ## Board hygiene
