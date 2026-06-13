@@ -158,9 +158,8 @@ assert.doesNotMatch(widgetText, /hard constraints?/i, "persistent board widget s
 assert.doesNotMatch(widgetText, /Live Decision Board/, "persistent board widget should omit the titled separator");
 assert.doesNotMatch(widgetText, /─/, "persistent board widget should omit separator lines");
 assert.match(widgetText, /\n  <accent>Decisions<\/accent>/, "expanded board sections should be indented for visual grouping");
-assert.match(widgetText, /\n    <dim>•<\/dim> <accent>\[D1\]<\/accent>/, "expanded board items should be indented under sections");
-assert.match(widgetText, /\[A1\]/, "assume command updates widget with a bracketed key");
-assert.match(widgetText, /\[D1\]/, "decide command updates widget with a bracketed key");
+assert.match(widgetText, /\n    <dim>•<\/dim> <muted>Build as a Pi extension first<\/muted>/, "expanded board items should be indented under sections without item keys");
+assert.doesNotMatch(widgetText, /\[[GAD]\d+]/, "persistent widget hides item keys by default");
 assert.equal(latestStatus, undefined, "board summary should not be duplicated in the footer status");
 assert.match(latestMessage.content, /Build as a Pi extension first/);
 await commands.get("board-history").handler("", ctx);
@@ -1751,7 +1750,8 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 	await localCommands.get("decide").handler("Managed decision", localCtx);
 	await localCommands.get("board-manage").handler("", localCtx);
 	assert.match(rendered[0], /Live Decision Board Manager/, "board-manage should render a titled keyboard UI");
-	assert.match(rendered[0], /> \[D1\]/, "manager initially selects the first sorted decision");
+	assert.match(rendered[0], /> active Managed decision/, "manager initially selects the first sorted decision without showing item keys");
+	assert.doesNotMatch(rendered[0], /\[[GAD]\d+]/, "manager hides item keys in primary UI");
 	assert.match(rendered[0], /e edit/, "manager renders keyboard help");
 	assert.match(rendered[0], /edit rewrites item text/i, "manager help should explain edit semantics");
 	assert.match(rendered[0], /archive keeps history/i, "manager help should explain archive semantics");
@@ -1759,7 +1759,7 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 	assert.match(rendered[0], /c clear/, "manager help should expose clear action");
 	assert.doesNotMatch(rendered[0], /\bh hard\b/, "manager help should not show harden action");
 	assert.doesNotMatch(rendered[0], /\bs soft\b/, "manager help should not show soften action");
-	assert.match(rendered[1], /> \[A1\]/, "j/down moves selection to the next item");
+	assert.match(rendered[1], /> active Managed assumption/, "j/down moves selection to the next item without showing item keys");
 }
 
 {

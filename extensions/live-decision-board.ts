@@ -654,9 +654,9 @@ function colorizeWidgetLine(line: string, theme: Theme): string {
 	const section = /^(Goal|Decisions|Assumptions) \((\d+)\)$/.exec(line);
 	if (section) return `  ${theme.fg("accent", section[1])} ${theme.fg("muted", `(${section[2]})`)}`;
 
-	const item = /^([!•]) \[([GAD]\d+)] (.*)$/.exec(line);
+	const item = /^([!•]) (.*)$/.exec(line);
 	if (!item) return line;
-	return `    ${theme.fg("dim", "•")} ${theme.fg("accent", `[${item[2]}]`)} ${theme.fg("muted", item[3])}`;
+	return `    ${theme.fg("dim", "•")} ${theme.fg("muted", item[2])}`;
 }
 
 export function formatBoardWidget(board: BoardState, options: { maxItems?: number } = {}): string[] {
@@ -690,7 +690,7 @@ function appendWidgetSection(lines: string[], label: string, items: BoardItem[],
 	}
 	const visibleItems = items.slice(0, remainingItems);
 	for (const item of visibleItems) {
-		lines.push(`• [${item.id}] ${item.text}`);
+		lines.push(`• ${item.text}`);
 	}
 	const hiddenItems = items.length - visibleItems.length;
 	if (hiddenItems > 0) lines.push(`… ${pluralize(hiddenItems, `more ${singularLabel}`)}`);
@@ -1223,11 +1223,10 @@ class BoardManagerComponent {
 	private renderItem(item: BoardItem, index: number, width: number): string {
 		const selected = index === this.selectedIndex;
 		const marker = selected ? this.theme.fg("accent", ">") : " ";
-		const id = this.theme.fg("accent", `[${item.id}]`);
 		const statusColor = item.status === "active" ? "success" : "dim";
 		const status = this.theme.fg(statusColor, item.status);
 		const text = isActiveItem(item) ? this.theme.fg("muted", item.text) : this.theme.fg("dim", item.text);
-		return truncateToWidth(`${marker} ${id} ${status} ${text}`, width);
+		return truncateToWidth(`${marker} ${status} ${text}`, width);
 	}
 
 	private moveSelection(delta: number): void {

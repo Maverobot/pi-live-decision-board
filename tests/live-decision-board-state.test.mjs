@@ -115,15 +115,15 @@ assert.deepEqual(
 	[
 		"Board v5 • 1 goal • 2 assumptions • 2 decisions",
 		"Goal (1)",
-		"• [G1] Current goal",
+		"• Current goal",
 		"Decisions (2)",
-		"• [D1] First decision",
-		"• [D2] Second decision",
+		"• First decision",
+		"• Second decision",
 		"Assumptions (2)",
-		"• [A1] Backend uses Node 22",
-		"• [A2] Second assumption",
+		"• Backend uses Node 22",
+		"• Second assumption",
 	],
-	"widget groups goal, decisions, and assumptions; sorts ids ascending; and renders ids as bracketed keys",
+	"widget groups goal, decisions, and assumptions; sorts ids ascending; and hides item keys in primary UI",
 );
 const inactiveDecisionBoard = mod.updateBoardItem(widgetBoard, "D1", { status: "archived" });
 assert.deepEqual(
@@ -131,12 +131,12 @@ assert.deepEqual(
 	[
 		"Board v6 • 1 goal • 2 assumptions • 1 decision",
 		"Goal (1)",
-		"• [G1] Current goal",
+		"• Current goal",
 		"Decisions (1)",
-		"• [D2] Second decision",
+		"• Second decision",
 		"Assumptions (2)",
-		"• [A1] Backend uses Node 22",
-		"• [A2] Second assumption",
+		"• Backend uses Node 22",
+		"• Second assumption",
 	],
 	"widget summary counts only active records shown in the widget body",
 );
@@ -146,9 +146,10 @@ for (let index = 1; index <= 9; index += 1) {
 }
 overflowBoard = mod.addBoardItem(overflowBoard, { kind: "assumption", text: "Assumption visible in counts" });
 const overflowWidget = mod.formatBoardWidget(overflowBoard);
-assert(overflowWidget.includes("• [D9] Decision 9"), "visible widget shows every active decision by default");
+assert(overflowWidget.includes("• Decision 9"), "visible widget shows every active decision by default");
 assert(overflowWidget.includes("Assumptions (1)"), "visible widget shows non-empty assumption sections after many decisions");
-assert(overflowWidget.includes("• [A1] Assumption visible in counts"), "visible widget shows every active assumption by default");
+assert(overflowWidget.includes("• Assumption visible in counts"), "visible widget shows every active assumption by default");
+assert(!overflowWidget.some((line) => /\[[GAD]\d+]/.test(line)), "primary widget hides item keys by default");
 assert(!overflowWidget.some((line) => line.startsWith("…")), "visible widget does not hide items behind overflow cues by default");
 
 let cleanupBoard = mod.createEmptyBoard();
