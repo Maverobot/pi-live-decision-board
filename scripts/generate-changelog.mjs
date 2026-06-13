@@ -52,12 +52,22 @@ function parseSubject(subject) {
 }
 
 function isChangelogMaintenanceCommit(subject) {
-	return /\b(changelog|release)\b/iu.test(subject);
+	return /^(?:docs|chore)(?:\([^)]+\))?:\s+.*\b(changelog|release)\b/iu.test(subject);
 }
 
 function collectCommits() {
 	const latestTag = maybeGit(["describe", "--tags", "--abbrev=0"]);
-	const range = latestTag ? [`${latestTag}..HEAD`] : [];
+	const head = maybeGit(["rev-parse", "HEAD"]);
+	let range = [];
+	if (latestTag) {
+		const latestTagCommit = maybeGit(["rev-list", "-n", "1", latestTag]);
+		if (latestTagCommit === head) {
+			const previousTag = maybeGit(["describe", "--tags", "--abbrev=0", `${latestTag}^`]);
+			range = previousTag ? [`${previousTag}..${latestTag}`] : [latestTag];
+		} else {
+			range = [`${latestTag}..HEAD`];
+		}
+	}
 	const raw = git(["log", "--format=%H%x1f%cs%x1f%s%x1e", ...range]);
 	return raw
 		.split("\x1e")
