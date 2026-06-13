@@ -4,7 +4,7 @@ All notable changes to this project are documented in this file.
 
 Entries are inferred from conventional git commit messages. Regenerate with `npm run changelog`.
 
-## 0.1.0 - 2026-06-13
+## 0.1.1 - 2026-06-13
 
 ### Added
 
