@@ -162,6 +162,13 @@ npm install
 npm test
 ```
 
+Regenerate the changelog from conventional git commit messages:
+
+```bash
+npm run changelog
+npm run changelog:check
+```
+
 The tests exercise state helpers, goal/assumption/decision command and tool registration, context injection, steering, markdown parsing, cleanup review, and stale accepted-item mutation blocking.
 
 ## License

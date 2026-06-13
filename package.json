@@ -23,6 +23,8 @@
     "node": ">=22.19.0"
   },
   "scripts": {
+    "changelog": "node scripts/generate-changelog.mjs",
+    "changelog:check": "node scripts/generate-changelog.mjs --check",
     "test": "npm run typecheck && node tests/live-decision-board-state.test.mjs && node tests/live-decision-board-extension.test.mjs",
     "typecheck": "tsc --noEmit"
   },
@@ -48,6 +50,8 @@
   },
   "files": [
     "extensions",
+    "scripts",
+    "CHANGELOG.md",
     "README.md",
     "LICENSE"
   ]

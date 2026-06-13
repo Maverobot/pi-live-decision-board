@@ -56,5 +56,5 @@
 - [X] Rename them to low risk, medium risk and high risk for clarity.
 - [X] Make the repo availabe on https://pi.dev/packages
 - [X] Provide archive tools so agents can archive deprecated items automatically. The ideal is that the user should seldom need to run /board-cleanup(-subagent) manually.
-- [ ] Add a changelog file to keep track of the changelog. Ideally the changelog can be infered from the git commit messages.
+- [X] Add a changelog file to keep track of the changelog. Ideally the changelog can be infered from the git commit messages.
 - [X] Readme says that archived items are in board history but I don't see the board history with / commands.
