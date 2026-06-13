@@ -447,8 +447,8 @@ Board hygiene is successful when:
 - users trust the board enough to read it before/while work proceeds
 
 * Open questions
-** Should =archive= become a first-class status?
-MVP can map archive to inactive existing status, but a true =archived= status may better preserve meaning.
+** Resolved: =archive= is a first-class status
+Archive is now the inactive retained board-item status.
 
 ** Should inactive/history be visible in =/board-manage= by default?
 Current manager includes inactive items. A future mode split may reduce clutter:

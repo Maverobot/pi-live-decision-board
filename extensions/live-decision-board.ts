@@ -173,14 +173,19 @@ export function updateBoardItem(board: BoardState, id: string, patch: BoardPatch
 	if (!changed) return board;
 
 	const nextVersion = board.version + 1;
-	const enforcementChanged = enforcedBoundaryChanged(existing, effective);
+	const timestamp = now();
+	const activatesGoal = effective.kind === "goal" && isActiveItem(effective);
+	const items = board.items.map((item) => {
+		if (item.id === normalizedId) return { ...effective, version: nextVersion, updatedAt: timestamp };
+		if (activatesGoal && isActiveGoal(item)) return { ...item, status: "archived" as const, version: nextVersion, updatedAt: timestamp };
+		return item;
+	});
+	const enforcementChanged = hasEnforcedBoundaryChanged(board.items, items);
 	return {
 		...board,
 		version: nextVersion,
 		hardDecisionBarrierVersion: enforcementChanged ? nextVersion : getHardDecisionBarrierVersion(board),
-		items: board.items.map((item) =>
-			item.id === normalizedId ? { ...effective, version: nextVersion, updatedAt: now() } : item,
-		),
+		items,
 	};
 }
 
@@ -739,10 +744,11 @@ function normalizeBoardState(value: unknown): BoardState | undefined {
 	) {
 		return undefined;
 	}
-	if (!candidate.items.every(isBoardItem)) return undefined;
+	const restoredItems = candidate.items.map(normalizeRestoredBoardItem);
+	if (restoredItems.some((item) => item === undefined)) return undefined;
 
 	const version = candidate.version;
-	const items = candidate.items.map((item) => ({ ...item, text: normalizeBoardText(item.text) }));
+	const items = restoredItems as BoardItem[];
 	if (items.some((item) => item.version > version)) return undefined;
 
 	const seenIds = new Set<string>();
@@ -774,23 +780,43 @@ function normalizeBoardState(value: unknown): BoardState | undefined {
 	};
 }
 
-function isBoardItem(value: unknown): value is BoardItem {
-	if (!value || typeof value !== "object") return false;
-	const item = value as Partial<BoardItem>;
-	return (
-		typeof item.id === "string" &&
-		/^[GAD]\d+$/.test(item.id) &&
-		isBoardKind(item.kind ?? "") &&
-		((item.id.startsWith("G") && item.kind === "goal") || (item.id.startsWith("A") && item.kind === "assumption") || (item.id.startsWith("D") && item.kind === "decision")) &&
-		typeof item.text === "string" &&
-		normalizeBoardText(item.text).length > 0 &&
-		isBoardStatus(item.status ?? "") &&
-		isBoardStrength(item.strength ?? "") &&
-		isBoardSource(item.source ?? "") &&
-		isPositiveInteger(item.version) &&
-		isNonNegativeFiniteNumber(item.createdAt) &&
-		isNonNegativeFiniteNumber(item.updatedAt)
-	);
+function normalizeRestoredBoardItem(value: unknown): BoardItem | undefined {
+	if (!value || typeof value !== "object") return undefined;
+	const item = value as Partial<BoardItem> & { status?: unknown };
+	const status = normalizeRestoredBoardStatus(item.status);
+	if (
+		typeof item.id !== "string" ||
+		!/^[GAD]\d+$/.test(item.id) ||
+		!isBoardKind(item.kind ?? "") ||
+		!((item.id.startsWith("G") && item.kind === "goal") || (item.id.startsWith("A") && item.kind === "assumption") || (item.id.startsWith("D") && item.kind === "decision")) ||
+		typeof item.text !== "string" ||
+		normalizeBoardText(item.text).length === 0 ||
+		!status ||
+		!isBoardStrength(item.strength ?? "") ||
+		!isBoardSource(item.source ?? "") ||
+		!isPositiveInteger(item.version) ||
+		!isNonNegativeFiniteNumber(item.createdAt) ||
+		!isNonNegativeFiniteNumber(item.updatedAt)
+	) {
+		return undefined;
+	}
+	return {
+		id: item.id,
+		kind: item.kind,
+		text: normalizeBoardText(item.text),
+		status,
+		strength: item.strength as BoardStrength,
+		source: item.source as BoardSource,
+		version: item.version,
+		createdAt: item.createdAt,
+		updatedAt: item.updatedAt,
+	};
+}
+
+function normalizeRestoredBoardStatus(value: unknown): BoardStatus | undefined {
+	if (value === "proposed" || value === "accepted" || value === "archived") return value;
+	if (value === "rejected" || value === "superseded") return "archived";
+	return undefined;
 }
 
 function isNonNegativeInteger(value: unknown): value is number {
@@ -1813,7 +1839,7 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 			id: Type.Optional(Type.String()),
 			kind: Type.Optional(StringEnum(["goal", "assumption", "decision"] as const)),
 			text: Type.Optional(Type.String()),
-			status: Type.Optional(StringEnum(["proposed", "accepted", "archived"] as const)),
+			status: Type.Optional(StringEnum(["proposed", "accepted"] as const)),
 			strength: Type.Optional(StringEnum(["soft", "hard"] as const)),
 			itemVersion: Type.Optional(Type.Number()),
 			reason: Type.Optional(Type.String()),
@@ -1826,6 +1852,8 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 
 			if (params.action === "add") {
 				if (!params.kind || !params.text?.trim()) throw new Error("decision_board add requires kind and text");
+				const requestedStatus = params.status as string | undefined;
+				if (requestedStatus === "archived") throw new Error("decision_board add cannot create archived items; add current guidance as proposed or accepted");
 				const nextBoard = addBoardItem(board, {
 					kind: params.kind,
 					text: params.text,
@@ -1909,6 +1937,8 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 				nextBoard = updateBoardItem(board, targetId, { text: params.text });
 			} else if (params.action === "set_status") {
 				if (!params.status) throw new Error("decision_board set_status requires status");
+				const requestedStatus = params.status as string;
+				if (requestedStatus === "archived") throw new Error("decision_board set_status cannot archive items; use action=archive with itemVersion and reason");
 				nextBoard = updateBoardItem(board, targetId, { status: params.status });
 			} else {
 				return {

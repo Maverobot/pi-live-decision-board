@@ -239,7 +239,13 @@ await assert.rejects(
 );
 
 assert(!JSON.stringify(registeredTool.parameters).includes('"supersede"'), "decision_board schema should not expose supersede actions");
-assert(!JSON.stringify(registeredTool.parameters).includes('"rejected"'), "decision_board schema should not expose legacy rejected status");
+assert(!JSON.stringify(registeredTool.parameters).includes('"rejected"'), "decision_board schema should not expose retired rejected status");
+assert(!JSON.stringify(registeredTool.parameters).includes('"archived"'), "decision_board set_status schema should require direct archive action instead of archived status");
+await assert.rejects(
+	() => registeredTool.execute("tool-archive-bypass", { action: "set_status", id: "D2", status: "archived" }, undefined, undefined, ctx),
+	/set_status cannot archive items/,
+	"set_status should not bypass direct archive freshness and reason guards",
+);
 
 assert(events.has("context"), "context hook should be registered");
 const contextResult = await events.get("context")(
@@ -364,6 +370,11 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 	board = localEntries.at(-1).data;
 	assert.equal(board.items.find((item) => item.id === "G2")?.status, "archived", "decision_board add kind=goal should archive the previous goal");
 	assert.equal(board.items.at(-1).id, "G3", "tool-created goals use G-prefixed ids");
+	await localCommands.get("board-accept").handler("G2", localCtx);
+	board = localEntries.at(-1).data;
+	assert.equal(board.items.find((item) => item.id === "G2")?.status, "accepted", "board-accept can restore an archived goal");
+	assert.equal(board.items.find((item) => item.id === "G3")?.status, "archived", "accepting an archived goal archives the previous active goal");
+	assert.equal(board.items.filter((item) => item.kind === "goal" && item.status === "accepted").length, 1, "board-accept preserves one accepted current goal");
 	assert(JSON.stringify(localTool.parameters).includes('"goal"'), "decision_board schema should accept goal kind");
 }
 

@@ -55,6 +55,10 @@ const withSecondGoal = mod.addBoardItem(withGoal, {
 assert.equal(withSecondGoal.items.find((item) => item.id === "G1").status, "archived", "adding a new goal archives the previous active goal");
 assert.equal(withSecondGoal.items.at(-1).id, "G2", "new goals use the next G-prefixed id");
 assert.equal(withSecondGoal.items.filter((item) => item.kind === "goal" && (item.status === "accepted" || item.status === "proposed")).length, 1, "only one goal remains active");
+const reactivatedFirstGoal = mod.updateBoardItem(withSecondGoal, "G1", { status: "accepted" });
+assert.equal(reactivatedFirstGoal.items.find((item) => item.id === "G1").status, "accepted", "archived goals can be accepted again");
+assert.equal(reactivatedFirstGoal.items.find((item) => item.id === "G2").status, "archived", "accepting an archived goal archives the previous active goal");
+assert.equal(reactivatedFirstGoal.items.filter((item) => item.kind === "goal" && (item.status === "accepted" || item.status === "proposed")).length, 1, "re-accepting a goal preserves the single active goal invariant");
 assert.match(mod.formatBoardStatus(withSecondGoal), /1 goal/, "status summary includes the active goal count");
 
 const prompt = mod.formatBoardForPrompt(withSecondGoal);
@@ -346,6 +350,20 @@ const fallbackRestored = mod.restoreBoardFromEntries([
 	},
 ]);
 assert.deepEqual(fallbackRestored, withDecision, "restore falls back to the newest valid board when a later board entry is malformed");
+const restoredRetiredStatuses = mod.restoreBoardFromEntries([
+	{
+		type: "custom",
+		customType: "live-decision-board",
+		data: {
+			...withDecision,
+			items: [
+				{ ...withDecision.items[0], status: "rejected" },
+				{ ...withDecision.items[1], status: "superseded", supersedes: "D0" },
+			],
+		},
+	},
+]);
+assert.deepEqual(restoredRetiredStatuses.items.map((item) => item.status), ["archived", "archived"], "restore normalizes retired inactive statuses to first-class archived status");
 const duplicateIdRestored = mod.restoreBoardFromEntries([
 	{
 		type: "custom",
