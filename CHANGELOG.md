@@ -86,4 +86,5 @@ Entries are inferred from conventional git commit messages. Regenerate with `npm
 
 ### Maintenance
 
+- ignore local pi config (9b46fa4)
 - ignore project worktrees (e1154c2)
