@@ -55,6 +55,6 @@
 - [X] What does low, medium etc mean in the board cleanup?
 - [X] Rename them to low risk, medium risk and high risk for clarity.
 - [X] Make the repo availabe on https://pi.dev/packages
-- [ ] Provide tools to remove item from the board so that the agent can remote deprecated items automatically. The ideal is that the user should seldom need to run /board-cleanup(-subagent) manually.
+- [X] Provide tools to remove item from the board so that the agent can remote deprecated items automatically. The ideal is that the user should seldom need to run /board-cleanup(-subagent) manually.
 - [ ] Add a changelog file to keep track of the changelog. Ideally the changelog can be infered from the git commit messages.
 - [ ] Readme says that archived items are in board history but I don't see the board history with / commands.

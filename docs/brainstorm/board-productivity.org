@@ -13,7 +13,7 @@ Should the agent behave differently on its next steps because this item is true?
 
 If the answer is no, the item should not remain active. It can be archived, superseded, moved into docs, or left in the audit trail.
 
-Cleanup must be user-controlled. Agents or subagents may propose cleanup, but they must not silently remove, weaken, or rewrite active context.
+Cleanup must be controlled and freshness-checked. The current agent may directly archive clearly deprecated active items with current itemVersion plus a reason; subagents and ambiguous removals still go through review/confirmation.
 
 * Problem
 The current board can accumulate historical implementation-log entries:
@@ -69,8 +69,8 @@ Do not add board items for:
 2. *User attention is scarce.* The widget must earn every visible line.
 3. *Capture at commitment points.* Add items when a decision will be reused, not when work merely progresses.
 4. *Current truth over provenance.* Active text should read like present-tense guidance, not history.
-5. *User-confirmed control.* Agents may suggest cleanup; users decide what leaves active context.
-6. *Accepted items are trust boundaries.* Accepted-item changes require explicit confirmation and before/after impact.
+5. *Controlled cleanup.* Agents may directly archive clearly routine deprecated items with current itemVersion plus a reason; ambiguous/current-context removals still require user review.
+6. *Accepted items are trust boundaries.* Accepted-item changes require either a narrow direct-archive reason for stale items or explicit confirmation with before/after impact.
 7. *Prefer update/supersede over duplication.* One clear current rule beats many historical entries.
 8. *Cleanup must feel safe.* Auditability and reversibility matter because users must trust cleanup.
 9. *No nagging.* Hygiene prompts are passive, dismissible, and tied to natural workflow boundaries.
@@ -113,7 +113,8 @@ Avoid presenting historical shipped decisions as "rejected" in user-facing clean
 | Duplicate/overlapping entries | Prefer merge/supersede later | Avoid ambiguity; do not over-automate MVP |
 | Product fact already documented | Move to docs + archive | README/design docs are better source of truth |
 | Ambiguous item | Ask user / keep by default | Cleanup should be conservative |
-| Accepted item proposed for removal/adjustment | Per-item explicit confirmation | Avoid weakening steering context silently |
+| Clearly deprecated active item | Direct archive allowed with current version + reason | Routine hygiene should not require manual cleanup UI |
+| Accepted item proposed for ambiguous removal/adjustment | Per-item explicit confirmation | Avoid weakening steering context silently |
 
 * User workflows
 ** Start of task: establish steering context
@@ -134,7 +135,7 @@ Add/update a board item when:
 Prefer updating or superseding existing entries over adding a new duplicate.
 
 ** End of task: close the loop
-- Archive implementation-log entries.
+- Archive implementation-log entries; direct agent archive is appropriate for clearly deprecated items when using current itemVersion + reason.
 - Supersede temporary decisions into evergreen rules when still useful.
 - Move shipped behavior into README/design docs.
 - Avoid adding an active board item saying cleanup happened.
@@ -149,11 +150,12 @@ Core loop:
 
 1. Identify stale/noisy active items.
 2. Propose keep/archive/supersede actions.
-3. Show the user exactly what active context will change.
-4. Apply only confirmed changes through normal board mutation helpers.
-5. Preserve auditability through retained inactive items or non-active session metadata.
+3. For clearly deprecated routine items, apply direct archive with current itemVersion plus reason.
+4. For ambiguous or bulk changes, show the user exactly what active context will change.
+5. Apply confirmed changes through normal board mutation helpers.
+6. Preserve auditability through retained inactive items or non-active session metadata.
 
-Cleanup is a review workflow, not an automatic mutation.
+Cleanup is a controlled workflow, not a silent mutation.
 
 * MVP recommendation
 Ship the smallest workflow that reduces noise without adding too much machinery.
@@ -181,7 +183,7 @@ MVP behavior:
 
 MVP non-goals:
 
-- no automatic cleanup
+- no silent or bulk automatic cleanup
 - no permanent delete
 - no default subagent/model cleanup
 - no git/docs/session context gathering

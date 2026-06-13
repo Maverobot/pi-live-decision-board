@@ -214,6 +214,21 @@ assert.equal(cleanedBoard.items.find((item) => item.id === "D1").status, "reject
 assert.equal(cleanedBoard.items.find((item) => item.id === "D2").strength, "hard", "cleanup preserves hard item strength");
 assert.equal(mod.formatBoardForPrompt(cleanedBoard).includes("Apply Round 5"), false, "archived item leaves active prompt context");
 
+const directArchiveBoard = mod.archiveBoardItem(cleanupBoard, "D2", cleanupD2.itemVersion);
+assert.equal(directArchiveBoard.items.find((item) => item.id === "D2").status, "rejected", "direct archive maps to inactive retained status");
+assert.equal(mod.formatBoardForPrompt(directArchiveBoard).includes("Use keyboard-first board management"), false, "direct archived item leaves active prompt context");
+assert(directArchiveBoard.items.find((item) => item.id === "D2"), "direct archive retains item history");
+assert.throws(
+	() => mod.archiveBoardItem(cleanupBoard, "D2", cleanupD2.itemVersion - 1),
+	/changed since it was observed/,
+	"direct archive rejects stale item versions",
+);
+assert.throws(
+	() => mod.archiveBoardItem(directArchiveBoard, "D2", cleanupD2.itemVersion),
+	/changed since it was observed/,
+	"direct archive rejects stale item versions even when the item is already inactive",
+);
+
 const noOpCleanup = mod.applyBoardCleanup(cleanupBoard, cleanupRecommendations.map((rec) => ({ ...rec, selected: false })));
 assert.equal(noOpCleanup, cleanupBoard, "cleanup with no selected actions is a no-op");
 

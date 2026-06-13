@@ -106,6 +106,7 @@ assert.match(promptGuidelines, /enforce/i, "decision_board prompt guidance shoul
 assert(promptGuidelines.includes(singleCleanupSubagentContract), "decision_board prompt guidance should enforce the single cleanup subagent contract");
 assert.match(promptGuidelines, /review_cleanup/i, "decision_board prompt guidance should mention subagent recommendation review");
 assert.match(promptGuidelines, /decision_board\.review_cleanup/i, "prompt guidance should direct to review_cleanup action");
+assert.match(promptGuidelines, /archive.*deprecated|deprecated.*archive/i, "prompt guidance should describe direct deprecated-item archiving");
 assert.doesNotMatch(promptGuidelines, /Ask the user/i, "prompt guidance should not direct ask_user in cleanup workflow");
 assert.doesNotMatch(promptGuidelines, /Use hard only/i, "prompt guidance should not promote hard/soft distinction");
 
@@ -368,6 +369,91 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 	assert.equal(board.items.find((item) => item.id === "G2")?.status, "superseded", "decision_board add kind=goal should supersede the previous goal");
 	assert.equal(board.items.at(-1).id, "G3", "tool-created goals use G-prefixed ids");
 	assert(JSON.stringify(localTool.parameters).includes('"goal"'), "decision_board schema should accept goal kind");
+}
+
+{
+	const localCommands = new Map();
+	const localEvents = new Map();
+	const localEntries = [];
+	let localTool;
+	const localCtx = {
+		hasUI: true,
+		isIdle: () => true,
+		sessionManager: { getBranch: () => [] },
+		ui: {
+			theme: { fg: (_color, text) => text },
+			setStatus: () => {},
+			setWidget: () => {},
+			notify: () => {},
+			confirm: async () => true,
+			editor: async (_title, initial) => initial,
+		},
+	};
+
+	extension({
+		on(eventName, callback) {
+			localEvents.set(eventName, callback);
+		},
+		registerCommand(name, def) {
+			localCommands.set(name, def);
+		},
+		registerTool(tool) {
+			localTool = tool;
+		},
+		appendEntry(customType, data) {
+			localEntries.push({ type: "custom", customType, data });
+		},
+		sendMessage() {},
+	});
+
+	await localEvents.get("session_start")({}, localCtx);
+	await localCommands.get("decide").handler("Completed implementation detail", localCtx);
+	const board = localEntries.at(-1).data;
+	const d1 = board.items.find((item) => item.id === "D1");
+	assert.equal(typeof d1?.version, "number");
+	const toolSchema = JSON.stringify(localTool.parameters);
+	assert(toolSchema.includes('"archive"'), "decision_board schema should expose direct archive action");
+	assert(toolSchema.includes('"remove"'), "decision_board schema should expose remove alias");
+	assert(toolSchema.includes("itemVersion"), "decision_board archive action should accept an itemVersion freshness guard");
+	assert(toolSchema.includes("reason"), "decision_board archive action should accept a reason");
+
+	await assert.rejects(
+		() => localTool.execute("archive-missing-reason", { action: "archive", id: "D1", itemVersion: d1.version }, undefined, undefined, localCtx),
+		/archive requires reason/,
+		"direct archive requires a reason",
+	);
+	await assert.rejects(
+		() => localTool.execute("archive-stale", { action: "archive", id: "D1", itemVersion: d1.version + 1, reason: "Deprecated implementation note" }, undefined, undefined, localCtx),
+		/changed since it was observed/,
+		"direct archive rejects stale item versions",
+	);
+	const archiveResult = await localTool.execute(
+		"archive-direct",
+		{ action: "archive", id: "D1", itemVersion: d1.version, reason: "Deprecated implementation note" },
+		undefined,
+		undefined,
+		localCtx,
+	);
+	assert.match(archiveResult.content[0].text, /Archived D1/);
+	const archivedBoard = localEntries.at(-1).data;
+	const archivedD1 = archivedBoard.items.find((item) => item.id === "D1");
+	assert.equal(archivedD1?.status, "rejected", "direct archive removes item from active context");
+	assert.doesNotMatch(archiveResult.details.boardContext, /Completed implementation detail/, "direct archived item leaves active prompt context");
+	const beforeNoOp = localEntries.length;
+	await assert.rejects(
+		() => localTool.execute("remove-inactive-stale", { action: "remove", id: "D1", itemVersion: d1.version, reason: "Already archived" }, undefined, undefined, localCtx),
+		/changed since it was observed/,
+		"remove alias still rejects stale item versions for inactive items",
+	);
+	const noChangeResult = await localTool.execute(
+		"remove-inactive",
+		{ action: "remove", id: "D1", itemVersion: archivedD1.version, reason: "Already archived" },
+		undefined,
+		undefined,
+		localCtx,
+	);
+	assert.equal(localEntries.length, beforeNoOp, "remove alias is a no-op for inactive items");
+	assert.match(noChangeResult.content[0].text, /already inactive/i);
 }
 
 {

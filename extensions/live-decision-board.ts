@@ -477,6 +477,20 @@ export function applyBoardCleanup(board: BoardState, recommendations: CleanupRec
 	return next;
 }
 
+export function archiveBoardItem(board: BoardState, id: string, itemVersion: number): BoardState {
+	const normalizedId = id.trim();
+	const existing = board.items.find((item) => item.id === normalizedId);
+	if (!existing) throw new Error(`Board item not found: ${normalizedId}`);
+	if (!Number.isInteger(itemVersion) || itemVersion <= 0) {
+		throw new Error("Board archive requires a current positive itemVersion");
+	}
+	if (existing.version !== itemVersion) {
+		throw new Error(`Board item ${normalizedId} changed since it was observed`);
+	}
+	if (!isActiveItem(existing)) return board;
+	return updateBoardItem(board, normalizedId, { status: "rejected" });
+}
+
 function assertCleanupRecommendationFresh(item: BoardItem, recommendation: CleanupRecommendation): void {
 	if (
 		item.version !== recommendation.itemVersion ||
@@ -1828,16 +1842,19 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 			"Use decision_board as a current-context contract, not as an implementation log for progress updates, tests run, files changed, or completed review batches.",
 			"Use a single read-only recommendation subagent for future board cleanup runs; do not launch multiple parallel board-cleanup recommendation subagents unless explicitly requested.",
 			"After /board-cleanup-subagent recommendations are prepared, call decision_board.review_cleanup with the recommendation objects for interactive review.",
+			"Use decision_board archive/remove only for routine deprecated or stale active items after listing the current board; include the observed itemVersion and a reason, and prefer review_cleanup when current-context impact is ambiguous.",
 			"Avoid using ask_user for subagent recommendations; invoke review_cleanup and let that workflow handle interactive confirmation before mutation.",
 		],
 		executionMode: "sequential",
 		parameters: Type.Object({
-			action: StringEnum(["list", "add", "update", "set_status", "set_strength", "supersede", "review_cleanup"] as const),
+			action: StringEnum(["list", "add", "update", "set_status", "set_strength", "supersede", "archive", "remove", "review_cleanup"] as const),
 			id: Type.Optional(Type.String()),
 			kind: Type.Optional(StringEnum(["goal", "assumption", "decision"] as const)),
 			text: Type.Optional(Type.String()),
 			status: Type.Optional(StringEnum(["proposed", "accepted", "rejected", "superseded"] as const)),
 			strength: Type.Optional(StringEnum(["soft", "hard"] as const)),
+			itemVersion: Type.Optional(Type.Number()),
+			reason: Type.Optional(Type.String()),
 			recommendations: Type.Optional(Type.Array(reviewCleanupRecommendationSchema)),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
@@ -1901,17 +1918,39 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 				};
 			}
 
-			if (!params.id) throw new Error(`decision_board ${params.action} requires id`);
+			const targetId = params.id?.trim();
+			if (!targetId) throw new Error(`decision_board ${params.action} requires id`);
+
+			if (params.action === "archive" || params.action === "remove") {
+				const reason = params.reason?.trim();
+				if (!reason) throw new Error("decision_board archive requires reason explaining why the item is deprecated or stale");
+				if (typeof params.itemVersion !== "number") throw new Error("decision_board archive requires itemVersion from the current board listing");
+				const current = board.items.find((item) => item.id === targetId);
+				if (!current) throw new Error(`Board item not found: ${targetId}`);
+				const nextBoard = archiveBoardItem(board, targetId, params.itemVersion);
+				if (nextBoard === board) {
+					return {
+						content: [{ type: "text", text: `No change: ${targetId} is already inactive` }],
+						details: { board, item: current, boardContext: formatBoardForPrompt(board) },
+					};
+				}
+				const result = commitBoard(nextBoard, ctx, "agent");
+				return {
+					content: [{ type: "text", text: result.changed ? `Archived ${targetId}: ${reason}` : `No change for ${targetId}` }],
+					details: { board, item: board.items.find((item) => item.id === targetId), boardContext: formatBoardForPrompt(board) },
+				};
+			}
+
 			let nextBoard: BoardState;
 			if (params.action === "supersede") {
 				if (!params.text?.trim()) throw new Error("decision_board supersede requires replacement text");
-				nextBoard = supersedeBoardItem(board, params.id, params.text, "agent");
+				nextBoard = supersedeBoardItem(board, targetId, params.text, "agent");
 			} else if (params.action === "update") {
 				if (!params.text?.trim()) throw new Error("decision_board update requires non-empty text");
-				nextBoard = updateBoardItem(board, params.id, { text: params.text });
+				nextBoard = updateBoardItem(board, targetId, { text: params.text });
 			} else if (params.action === "set_status") {
 				if (!params.status) throw new Error("decision_board set_status requires status");
-				nextBoard = updateBoardItem(board, params.id, { status: params.status });
+				nextBoard = updateBoardItem(board, targetId, { status: params.status });
 			} else {
 				return {
 					content: [
@@ -1925,7 +1964,7 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 			}
 			const result = commitBoard(nextBoard, ctx, "agent");
 			return {
-				content: [{ type: "text", text: result.changed ? `Updated ${params.id}` : `No change for ${params.id}` }],
+				content: [{ type: "text", text: result.changed ? `Updated ${targetId}` : `No change for ${targetId}` }],
 				details: { board },
 			};
 		},
