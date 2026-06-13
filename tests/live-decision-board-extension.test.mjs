@@ -68,7 +68,6 @@ for (const name of [
 	"board-hard",
 	"board-soft",
 	"board-archive",
-	"board-accept",
 	"board-clear",
 ]) {
 	assert(commands.has(name), `${name} command should be registered`);
@@ -76,9 +75,9 @@ for (const name of [
 assert.equal(commands.has("board-show"), false, "board-show should be renamed to board-snapshot");
 assert.match(commands.get("board-snapshot").description, /active context snapshot/, "board-snapshot should describe the active context view it records");
 assert.match(commands.get("board-history").description, /inactive|history|archived/i, "board-history should describe inactive board history");
-assert.match(commands.get("assume").description, /accepted assumption/i, "assume command should use accepted-item wording");
+assert.match(commands.get("assume").description, /active assumption/i, "assume command should use active-item wording");
 assert.doesNotMatch(commands.get("assume").description, /soft|hard/i, "assume command should not expose legacy strength wording");
-assert.match(commands.get("decide").description, /accepted decision/i, "decide command should use accepted-item wording");
+assert.match(commands.get("decide").description, /active decision/i, "decide command should use active-item wording");
 assert.doesNotMatch(commands.get("decide").description, /soft|hard/i, "decide command should not expose legacy strength wording");
 assert.match(commands.get("board-manage").description, /primary/i, "board-manage should be described as the primary item-action UI");
 assert.match(commands.get("board-manage").description, /\bclear\b/i, "board-manage should advertise clear after Task 2");
@@ -88,21 +87,20 @@ assert(messageRenderers.has("live-decision-board-cleanup-subagent-handoff"), "bo
 assert.match(commands.get("board-archive").description, /fallback/i, "board-archive should be documented as a fallback command");
 assert.match(commands.get("board-archive").description, /prefer\s+\/board-manage/i, "board-archive should prefer board-manage");
 assert.equal(commands.has("board-reject"), false, "board-reject compatibility alias should not be registered");
-assert.match(commands.get("board-accept").description, /fallback/i, "board-accept should be documented as a fallback command");
-assert.match(commands.get("board-accept").description, /prefer\s+\/board-manage/i, "board-accept should prefer board-manage");
+assert.equal(commands.has("board-accept"), false, "board-accept should not be registered in active-vs-archived model");
 assert.equal(commands.has("board-supersede"), false, "board-supersede compatibility alias should not be registered");
 assert.match(commands.get("board-clear").description, /fallback/i, "board-clear should be documented as a fallback command");
 assert.match(commands.get("board-clear").description, /prefer\s+\/board-manage/i, "board-clear should prefer board-manage once manager clear exists");
 
-assert.match(commands.get("board-hard").description, /accepted items are enforced automatically/i, "board-hard help should say it is compatibility-only");
-assert.doesNotMatch(commands.get("board-hard").description, /accepted decisions|enforce board items/i, "board-hard help should not imply it performs enforcement or only covers decisions");
+assert.match(commands.get("board-hard").description, /active board items are enforced automatically/i, "board-hard help should say it is compatibility-only");
+assert.doesNotMatch(commands.get("board-hard").description, /accepted decisions/i, "board-hard help should not imply it only covers decisions");
 assert.equal(registeredTool.name, "decision_board", "decision_board tool should be registered");
 assert.equal(registeredTool.executionMode, "sequential", "decision_board runs sequentially before later tool preflights");
 const promptGuidelines = registeredTool.promptGuidelines.join("\n");
 const singleCleanupSubagentContract = "Use a single read-only recommendation subagent for future board cleanup runs; do not launch multiple parallel board-cleanup recommendation subagents unless explicitly requested.";
 assert.match(promptGuidelines, /one current goal/i, "decision_board prompt guidance should mention the single current goal");
-assert.match(promptGuidelines, /accepted/i, "decision_board prompt guidance should mention accepted items");
-assert.match(promptGuidelines, /proposed/i, "decision_board prompt guidance should explain proposed items");
+assert.match(promptGuidelines, /active/i, "decision_board prompt guidance should mention active items");
+assert.doesNotMatch(promptGuidelines, /accepted|proposed/i, "decision_board prompt guidance should not expose proposed/accepted states");
 assert.match(promptGuidelines, /enforce/i, "decision_board prompt guidance should mention enforcement");
 assert(promptGuidelines.includes(singleCleanupSubagentContract), "decision_board prompt guidance should enforce the single cleanup subagent contract");
 assert.match(promptGuidelines, /review_cleanup/i, "decision_board prompt guidance should mention subagent recommendation review");
@@ -171,8 +169,8 @@ assert.match(latestMessage.content, /Active items:/);
 assert.match(latestMessage.content, /Backend uses Node 22/, "board-history includes active assumptions");
 const entriesBeforeToggle = entries.length;
 await commands.get("board-toggle").handler("", ctx);
-assert.doesNotMatch(latestNotificationMessage, /hard decisions/i, "collapse notification should use accepted-item enforcement wording");
-assert.match(latestNotificationMessage, /enforces accepted items/i, "collapse notification should explain accepted-item enforcement");
+assert.doesNotMatch(latestNotificationMessage, /hard decisions/i, "collapse notification should use active-item enforcement wording");
+assert.match(latestNotificationMessage, /enforces active items/i, "collapse notification should explain active-item enforcement");
 const collapsedWidgetText = renderLatestWidgetText();
 assert.match(collapsedWidgetText, /Board/, "board-toggle keeps the board summary visible when collapsed");
 assert.doesNotMatch(collapsedWidgetText, /\bv\d+\b/, "collapsed board widget summary should also hide implementation-detail board versions");
@@ -189,22 +187,20 @@ assert.equal(entries.at(-1).data.items.find((item) => item.id === "A1").status, 
 await commands.get("board-history").handler("", ctx);
 assert.match(latestMessage.content, /Inactive history:/);
 assert.match(latestMessage.content, /\[A1\].*Backend uses Node 22.*archived/, "board-history exposes archived items with archive terminology");
-await commands.get("board-accept").handler("A1", ctx);
-assert.equal(entries.at(-1).data.items.find((item) => item.id === "A1").status, "accepted");
-const acceptedBoardForRestore = entries.at(-1).data;
+const activeBoardForRestore = initialBoard;
 const beforeNoOp = entries.length;
 latestNotificationMessage = "";
 await commands.get("board-hard").handler("D1", ctx);
 assert.equal(entries.length, beforeNoOp, "board-hard command is compatibility no-op");
-assert.match(latestNotificationMessage, /accepted.*enforced/i, "board-hard should explain automatic accepted enforcement");
+assert.match(latestNotificationMessage, /active.*enforced/i, "board-hard should explain automatic active enforcement");
 latestNotificationMessage = "";
 await commands.get("board-soft").handler("D1", ctx);
 assert.equal(entries.length, beforeNoOp, "board-soft command is compatibility no-op");
-assert.match(latestNotificationMessage, /accepted.*enforced/i, "board-soft should explain automatic accepted enforcement");
+assert.match(latestNotificationMessage, /active.*enforced/i, "board-soft should explain automatic active enforcement");
 
 const addResult = await registeredTool.execute(
 	"tool-1",
-	{ action: "add", kind: "decision", text: "Prefer minimal MVP", status: "accepted", strength: "hard" },
+	{ action: "add", kind: "decision", text: "Prefer minimal MVP", strength: "hard" },
 	undefined,
 	undefined,
 	ctx,
@@ -232,21 +228,15 @@ const noStrengthToolResult = await registeredTool.execute(
 assert.equal(entries.length, beforeToolNoOp, "set_strength without strength should remain no-op compatibility behavior");
 assert.match(noStrengthToolResult.content[0].text, /set_strength.*deprecated/i, "set_strength missing strength should report deprecation");
 
+assert(!JSON.stringify(registeredTool.parameters).includes('"set_status"'), "decision_board schema should not expose set_status actions");
 await assert.rejects(
-	() => registeredTool.execute("tool-2", { action: "set_status", id: "D2" }, undefined, undefined, ctx),
-	/set_status requires status/,
-	"missing status should be refused without corrupting board state",
+	() => registeredTool.execute("tool-status-removed", { action: "set_status", id: "D2", status: "active" }, undefined, undefined, ctx),
+	/Unsupported decision_board action/,
+	"removed set_status action should not silently no-op when called directly",
 );
-
 assert(!JSON.stringify(registeredTool.parameters).includes('"supersede"'), "decision_board schema should not expose supersede actions");
 assert(!JSON.stringify(registeredTool.parameters).includes('"rejected"'), "decision_board schema should not expose retired rejected status");
-assert(!JSON.stringify(registeredTool.parameters).includes('"archived"'), "decision_board set_status schema should require direct archive action instead of archived status");
-await assert.rejects(
-	() => registeredTool.execute("tool-archive-bypass", { action: "set_status", id: "D2", status: "archived" }, undefined, undefined, ctx),
-	/set_status cannot archive items/,
-	"set_status should not bypass direct archive freshness and reason guards",
-);
-
+assert(!JSON.stringify(registeredTool.parameters).includes('"archived"'), "decision_board tool schema should require direct archive action instead of archived status");
 assert(events.has("context"), "context hook should be registered");
 const contextResult = await events.get("context")(
 	{
@@ -291,11 +281,11 @@ const allowed = await events.get("tool_call")({ toolName: "read", input: { path:
 assert.equal(allowed, undefined, "read-only tools are not blocked");
 
 branchEntries = [
-	{ type: "custom", customType: "live-decision-board", data: acceptedBoardForRestore },
+	{ type: "custom", customType: "live-decision-board", data: activeBoardForRestore },
 	{
 		type: "custom",
 		customType: "live-decision-board",
-		data: { version: acceptedBoardForRestore.version + 1, nextAssumptionId: 2, nextDecisionId: 3, items: [null] },
+		data: { version: activeBoardForRestore.version + 1, nextAssumptionId: 2, nextDecisionId: 3, items: [null] },
 	},
 ];
 await events.get("session_tree")({}, ctx);
@@ -358,11 +348,11 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 	let board = localEntries.at(-1).data;
 	assert.equal(board.items.find((item) => item.id === "G1")?.status, "archived", "/goal should archive the previous active goal");
 	assert.equal(board.items.find((item) => item.id === "G2")?.text, "Polish the board taxonomy", "/goal should create the current goal");
-	assert.equal(board.items.filter((item) => item.kind === "goal" && item.status === "accepted").length, 1, "/goal keeps one accepted current goal");
+	assert.equal(board.items.filter((item) => item.kind === "goal" && item.status === "active").length, 1, "/goal keeps one active current goal");
 
 	await localTool.execute(
 		"goal-tool",
-		{ action: "add", kind: "goal", text: "Tool-set current goal", status: "accepted", strength: "soft" },
+		{ action: "add", kind: "goal", text: "Tool-set current goal", status: "active", strength: "soft" },
 		undefined,
 		undefined,
 		localCtx,
@@ -370,11 +360,6 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 	board = localEntries.at(-1).data;
 	assert.equal(board.items.find((item) => item.id === "G2")?.status, "archived", "decision_board add kind=goal should archive the previous goal");
 	assert.equal(board.items.at(-1).id, "G3", "tool-created goals use G-prefixed ids");
-	await localCommands.get("board-accept").handler("G2", localCtx);
-	board = localEntries.at(-1).data;
-	assert.equal(board.items.find((item) => item.id === "G2")?.status, "accepted", "board-accept can restore an archived goal");
-	assert.equal(board.items.find((item) => item.id === "G3")?.status, "archived", "accepting an archived goal archives the previous active goal");
-	assert.equal(board.items.filter((item) => item.kind === "goal" && item.status === "accepted").length, 1, "board-accept preserves one accepted current goal");
 	assert(JSON.stringify(localTool.parameters).includes('"goal"'), "decision_board schema should accept goal kind");
 }
 
@@ -721,8 +706,8 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 	assert.match(cleanupRendered[0], /Archive from active board/);
 	assert.match(cleanupRendered[0], /low risk/);
 	assert.match(cleanupRendered[0], /Apply Round 5/);
-	assert.match(cleanupRendered[0], /\[D1\].*accepted/);
-	assert.doesNotMatch(cleanupRendered[0], /accepted\/soft|accepted\/hard/);
+	assert.match(cleanupRendered[0], /\[D1\].*active/);
+	assert.doesNotMatch(cleanupRendered[0], /active\/soft|active\/hard/);
 	assert.doesNotMatch(cleanupRendered[0], /Hard constraints are kept by default|Hard constraints/i);
 	assert.match(cleanupRendered[0], /space toggle/);
 	const cleanupInitialTop = cleanupRendered[0].split("\n").slice(0, 4).join("\n");
@@ -828,8 +813,8 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 	await cleanupCommands.get("decide").handler("Core implementation constraint", cleanupCtx);
 	const entriesBeforeCleanup = cleanupEntries.length;
 	await cleanupCommands.get("board-cleanup").handler("", cleanupCtx);
-	assert.match(cleanupRendered[0], /\[ \]\s*\[D1\] accepted Keep/i, "keep recommendations start unselected");
-	assert.match(cleanupRendered[1], /\[x\]\s*\[D1\] accepted Archive from active board/i, "Space marks keep recommendations as manual archive overrides");
+	assert.match(cleanupRendered[0], /\[ \]\s*\[D1\] active Keep/i, "keep recommendations start unselected");
+	assert.match(cleanupRendered[1], /\[x\]\s*\[D1\] active Archive from active board/i, "Space marks keep recommendations as manual archive overrides");
 	assert.equal(confirmCalled, true, "manual archive override opens cleanup confirmation");
 	assert.equal(cleanupEntries.length, entriesBeforeCleanup + 1, "manual archive override persists cleanup");
 	assert.equal(cleanupEntries.at(-1).data.items.find((item) => item.id === "D1")?.status, "archived");
@@ -950,7 +935,6 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 	await cleanupCommands.get("board-cleanup").handler("", cleanupCtx);
 	assert.equal(confirmTitle, "Apply Board Cleanup?");
 	assert.match(confirmMessage, /Active items:\s*2\s*→\s*1/i);
-	assert.match(confirmMessage, /Accepted items:\s*2\s*→\s*1/i);
 	assert.match(confirmMessage, /Archive:\s*1/i);
 	assert.doesNotMatch(confirmMessage, /Supersede:/i);
 	assert.doesNotMatch(confirmMessage, /Hard constraints/i);
@@ -1198,12 +1182,12 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 
 	assert.equal(confirmCalled, true, "review_cleanup should open confirmation for actionable imported recommendations");
 	assert.match(confirmationMessage, /Apply Board Cleanup\?/);
-	assert.match(reviewCleanupRender[0], /\[x\]\s*\[D1\] accepted Archive/i, "imported archive recommendations should be initially selected");
-	assert.match(reviewCleanupRender[1], /\[ \]\s*\[D1\] accepted Archive/i, "space toggles imported archive recommendation off");
-	assert.match(reviewCleanupRender[2], /\[x\]\s*\[D1\] accepted Archive/i, "space toggles imported archive recommendation back on");
+	assert.match(reviewCleanupRender[0], /\[x\]\s*\[D1\] active Archive/i, "imported archive recommendations should be initially selected");
+	assert.match(reviewCleanupRender[1], /\[ \]\s*\[D1\] active Archive/i, "space toggles imported archive recommendation off");
+	assert.match(reviewCleanupRender[2], /\[x\]\s*\[D1\] active Archive/i, "space toggles imported archive recommendation back on");
 	assert.match(toolResult.content[0].text, /reviewed\s+2/i);
 	assert.equal(localEntries.at(-1).data.items.find((item) => item.id === "D1")?.status, "archived");
-	assert.equal(localEntries.at(-1).data.items.find((item) => item.id === "D2")?.status, "accepted");
+	assert.equal(localEntries.at(-1).data.items.find((item) => item.id === "D2")?.status, "active");
 }
 
 {
@@ -1318,7 +1302,7 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 		undefined,
 		localCtx,
 	);
-	assert.match(reviewCleanupRender[0], /\[x\]\s*\[D2\] accepted Archive/i);
+	assert.match(reviewCleanupRender[0], /\[x\]\s*\[D2\] active Archive/i);
 	assert.doesNotMatch(reviewCleanupRender[0], /\[D1\]/, "stale recommendations should be skipped before opening UI");
 	assert.equal(confirmCalled, true, "fresh imported recommendation should still allow confirmation");
 	assert.match(toolResult.content[0].text, /2 skipped/i);
@@ -1555,7 +1539,7 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 	const editPromise = localCommands.get("board").handler("", localCtx);
 	await localTool.execute(
 		"local-tool-1",
-		{ action: "add", kind: "decision", text: "Concurrent accepted decision", status: "accepted", strength: "hard" },
+		{ action: "add", kind: "decision", text: "Concurrent active decision", status: "active", strength: "hard" },
 		undefined,
 		undefined,
 		localCtx,
@@ -1564,7 +1548,7 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 	resolveEditor(editorInitial.replace("Initial assumption", "Stale editor rewrite"));
 	await editPromise;
 	assert.equal(localEntries.length, entriesBeforeStaleEditorSave, "stale /board editor saves should not append board entries");
-	assert(localEntries.at(-1).data.items.some((item) => item.text === "Concurrent accepted decision"), "stale /board editor saves must not drop concurrent board updates");
+	assert(localEntries.at(-1).data.items.some((item) => item.text === "Concurrent active decision"), "stale /board editor saves must not drop concurrent board updates");
 	assert.match(latestNotification, /changed while editor was open/, "stale /board editor saves should notify the user to reopen");
 }
 
@@ -1579,7 +1563,7 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 	const editorResult = new Promise((resolve) => {
 		resolveEditor = resolve;
 	});
-	const sameVersionAcceptedBoard = {
+	const sameVersionActiveBoard = {
 		version: 1,
 		hardDecisionBarrierVersion: 1,
 		nextAssumptionId: 1,
@@ -1588,8 +1572,8 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 			{
 				id: "D1",
 				kind: "decision",
-				text: "Same-version accepted decision",
-				status: "accepted",
+				text: "Same-version active decision",
+				status: "active",
 				strength: "hard",
 				source: "user",
 				version: 1,
@@ -1634,7 +1618,7 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 	await localEvents.get("session_start")({}, localCtx);
 	await localCommands.get("assume").handler("Initial assumption", localCtx);
 	const editPromise = localCommands.get("board").handler("", localCtx);
-	localBranchEntries = [{ type: "custom", customType: "live-decision-board", data: sameVersionAcceptedBoard }];
+	localBranchEntries = [{ type: "custom", customType: "live-decision-board", data: sameVersionActiveBoard }];
 	await localEvents.get("session_tree")({}, localCtx);
 	const entriesBeforeStaleEditorSave = localEntries.length;
 	resolveEditor(editorInitial.replace("Initial assumption", "Same-version stale editor rewrite"));
@@ -1655,7 +1639,7 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 	const confirmResult = new Promise((resolve) => {
 		resolveConfirm = resolve;
 	});
-	const sameVersionAcceptedBoard = {
+	const sameVersionActiveBoard = {
 		version: 1,
 		hardDecisionBarrierVersion: 0,
 		nextAssumptionId: 2,
@@ -1665,7 +1649,7 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 				id: "A1",
 				kind: "assumption",
 				text: "Same-version restored assumption",
-				status: "accepted",
+				status: "active",
 				strength: "soft",
 				source: "user",
 				version: 1,
@@ -1707,7 +1691,7 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 	await localEvents.get("session_start")({}, localCtx);
 	await localCommands.get("decide").handler("Initial decision", localCtx);
 	const clearPromise = localCommands.get("board-clear").handler("", localCtx);
-	localBranchEntries = [{ type: "custom", customType: "live-decision-board", data: sameVersionAcceptedBoard }];
+	localBranchEntries = [{ type: "custom", customType: "live-decision-board", data: sameVersionActiveBoard }];
 	await localEvents.get("session_tree")({}, localCtx);
 	const entriesBeforeStaleClear = localEntries.length;
 	resolveConfirm(true);
@@ -1854,7 +1838,7 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 	const confirmResult = new Promise((resolve) => {
 		resolveConfirm = resolve;
 	});
-	const sameVersionAcceptedBoard = {
+	const sameVersionActiveBoard = {
 		version: 1,
 		hardDecisionBarrierVersion: 1,
 		nextAssumptionId: 2,
@@ -1864,7 +1848,7 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 				id: "A1",
 				kind: "assumption",
 				text: "Manager stale clear assumption",
-				status: "accepted",
+				status: "active",
 				strength: "soft",
 				source: "user",
 				version: 1,
@@ -1918,7 +1902,7 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 	const managePromise = localCommands.get("board-manage").handler("", localCtx);
 	await Promise.resolve();
 	const staleBoard = {
-		...sameVersionAcceptedBoard,
+		...sameVersionActiveBoard,
 	};
 	localBranchEntries.length = 0;
 	localBranchEntries.push({ type: "custom", customType: "live-decision-board", data: staleBoard });
@@ -1974,7 +1958,7 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 	});
 
 	await localEvents.get("session_start")({}, localCtx);
-	await localCommands.get("decide").handler("Already accepted decision", localCtx);
+	await localCommands.get("decide").handler("Already active decision", localCtx);
 	const entriesBeforeNoOpManager = localEntries.length;
 	await localCommands.get("board-manage").handler("", localCtx);
 	assert.equal(localEntries.length, entriesBeforeNoOpManager, "manager no-op actions should not persist duplicate board entries");
@@ -2028,8 +2012,8 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 	const entriesBeforeManagerActions = localEntries.length;
 	await localCommands.get("board-manage").handler("", localCtx);
 	const finalBoard = localEntries.at(-1).data;
-	assert.equal(localEntries.length, entriesBeforeManagerActions + 3, "manager persists archive/accept/edit exactly once and ignores removed compatibility actions");
-	assert.equal(finalBoard.items.find((item) => item.id === "D1").status, "accepted", "manager can re-accept archived items");
+	assert.equal(localEntries.length, entriesBeforeManagerActions + 2, "manager persists archive/edit exactly once and ignores removed compatibility actions");
+	assert.equal(finalBoard.items.find((item) => item.id === "D1").status, "archived", "manager keeps archived items archived without an accept action");
 	assert.equal(finalBoard.items.find((item) => item.id === "D1").text, "Managed decision edited", "manager can edit selected item text");
 	assert.equal(finalBoard.items.length, 1, "manager no longer creates extra items");
 }

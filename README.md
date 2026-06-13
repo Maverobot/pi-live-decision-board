@@ -2,7 +2,7 @@
 
 A [Pi](https://pi.dev) package that adds a live, mutable goal, assumptions, and decisions board to Pi coding sessions.
 
-The board is visible while the agent works, editable by the user, writable by the model through a tool, injected into future model context, and enforced before stale accepted-item mutations.
+The board is visible while the agent works, editable by the user, writable by the model through a tool, injected into future model context, and enforced before stale active-item mutations.
 
 ## Install
 
@@ -28,10 +28,10 @@ pi -e .
 
 | Command | Purpose |
 | --- | --- |
-| `/board-manage` | Primary keyboard workflow for selecting board items and editing, accepting, archiving, or clearing them |
+| `/board-manage` | Primary keyboard workflow for selecting board items and editing, archiving, or clearing them |
 | `/goal <text>` | Quick capture: set the single current goal |
-| `/assume <text>` | Quick capture: add an accepted assumption |
-| `/decide <text>` | Quick capture: add an accepted decision |
+| `/assume <text>` | Quick capture: add an active assumption |
+| `/decide <text>` | Quick capture: add an active decision |
 | `/board-cleanup` | Review active board items and archive obvious historical entries after confirmation |
 | `/board-cleanup-subagent` | Start or queue a folded handoff for read-only subagent-assisted cleanup recommendations; apply remains user-confirmed |
 | `/board-snapshot` | Show the active board context snapshot as a visible message |
@@ -44,10 +44,9 @@ pi -e .
 | --- | --- |
 | `/board` | Power-user editor for the live board markdown |
 | `/board-archive <id>` | Power-user fallback to archive an item by id; prefer `/board-manage` |
-| `/board-accept <id>` | Power-user fallback to accept a proposed or archived item by id; prefer `/board-manage` |
 | `/board-clear` | Power-user fallback to clear the board after confirmation; prefer `/board-manage` |
-| `/board-hard <id>` | Deprecated compatibility no-op: accepted-item enforcement now ignores hard/soft commands |
-| `/board-soft <id>` | Deprecated compatibility no-op: accepted-item enforcement now ignores hard/soft commands |
+| `/board-hard <id>` | Deprecated compatibility no-op: active-item enforcement now ignores hard/soft commands |
+| `/board-soft <id>` | Deprecated compatibility no-op: active-item enforcement now ignores hard/soft commands |
 
 ## Agent tool
 
@@ -56,8 +55,7 @@ The extension registers a `decision_board` tool with actions:
 - `list`
 - `add`
 - `update`
-- `set_status`
-- `set_strength` (compatibility no-op; accepted/proposed status controls enforcement)
+- `set_strength` (compatibility no-op; active status controls enforcement)
 - `archive`
 - `review_cleanup`
 
@@ -71,14 +69,14 @@ Prompt guidance tells the model to keep one current goal plus assumptions and de
 
 - Board state is persisted in Pi session custom entries and restored from the active branch.
 - The widget shows a compact summary followed by indented Goal, Decisions, and Assumptions sections with all active items by default; `/board-toggle` collapses the body while keeping the summary line visible. Footer status and titled separator lines are intentionally suppressed to avoid duplicate or noisy board chrome.
-- `/board-snapshot` records the active context view (accepted/proposed items plus board rules) as a visible message.
+- `/board-snapshot` records the active context view (active items plus board rules) as a visible message.
 - `/board-history` records a visible board-history view with active items plus inactive archived items retained after archive or cleanup actions.
-- `/board-manage` is the primary TUI mutation UI for existing board items: `↑↓/j/k` select, `enter/e` edit, `a` accept, `r` archive, `c` clear, `q/esc` close. Edit rewrites the selected item text in place; archive removes the item from active context while retaining history. When old guidance is no longer current, archive it; if new current guidance is needed, add a new goal, assumption, or decision.
+- `/board-manage` is the primary TUI mutation UI for existing board items: `↑↓/j/k` select, `enter/e` edit, `r` archive, `c` clear, `q/esc` close. Edit rewrites the selected item text in place; archive removes the item from active context while retaining history. When old guidance is no longer current, archive it; if new current guidance is needed, add a new goal, assumption, or decision.
 - `/board-cleanup` lets users manually select any active item for archive: `space` toggles the selected row, and toggling a keep/review row marks it as an archive override before `enter` opens the confirmation.
 - Item-targeted slash commands remain available as compatibility/power-user fallbacks for users who want to act by id, but the keyboard manager is the preferred workflow.
 - The `context` hook removes stale board-generated context and injects exactly one fresh board snapshot into provider requests.
 - User/discussion-loop edits while the agent is busy queue a steering message so the next model turn sees the updated board.
-- Accepted items are enforced in context and block stale `write`, `edit`, and non-read-only `bash` calls until the fresh board has been injected.
+- Active items are enforced in context and block stale `write`, `edit`, and non-read-only `bash` calls until the fresh board has been injected.
 
 ## Markdown board format
 
@@ -87,22 +85,20 @@ Prompt guidance tells the model to keep one current goal plus assumptions and de
 ```md
 # Live Decision Board
 
-- G1 | goal | accepted | soft | Ship the current board workflow
-- A1 | assumption | accepted | soft | Backend uses Node 22
-- D1 | decision | accepted | hard | Build as a Pi extension first
+- G1 | goal | active | soft | Ship the current board workflow
+- A1 | assumption | active | soft | Backend uses Node 22
+- D1 | decision | active | hard | Build as a Pi extension first
 ```
 
-Valid statuses: `proposed`, `accepted`, `archived`.
+Valid statuses: `active`, `archived`.
 
 `strength` is legacy compatibility data (`soft`/`hard`) and is not a product semantic for enforcement.
 
-## Accepted vs proposed items
+## Active vs archived items
 
-Accepted items are enforced as current context. The agent should treat the accepted Goal, assumptions, and decisions as relevant before mutating files.
+Every item on the active board is enforced as current context. The agent should treat the Goal, assumptions, and decisions as relevant before mutating files.
 
 There is at most one active Goal. Use it for the current objective. Use Assumptions for uncertain or contextual facts, and Decisions for durable choices or constraints that should guide future work. Archive Decisions once they become historical implementation details.
-
-Proposed items are visible drafts. Use them for uncertain goals, assumptions, or decisions that need review before they become enforced.
 
 The legacy `soft`/`hard` strength field may appear in older session data and markdown exports. It is retained for compatibility only and does not affect enforcement.
 
@@ -113,7 +109,7 @@ The board is the current working context, not a changelog. Add or keep one Goal 
 Good board items:
 
 - "Use keyboard-first board management unless Pi documents mouse support."
-- "Accepted items should block stale mutations until the next board injection."
+- "Active items should block stale mutations until the next board injection."
 - "Assumption: keep defaults stable until the user requests a cleanup policy change."
 
 Bad active board items:
@@ -130,7 +126,7 @@ Cleanup risk levels estimate the chance that applying a recommendation would arc
 
 - `low risk`: obvious historical clutter or a safe no-op recommendation.
 - `medium risk`: needs human judgment, usually because a useful principle may remain but wording/action might change.
-- `high risk`: likely to affect current context, accepted constraints, or ambiguous user intent.
+- `high risk`: likely to affect current context, active constraints, or ambiguous user intent.
 
 Imported recommendations may also include confidence. Confidence is evidence strength (`low`/`medium`/`high`) for the recommendation itself; risk is the potential harm if the recommendation is wrong.
 
@@ -166,7 +162,7 @@ npm run changelog
 npm run changelog:check
 ```
 
-The tests exercise state helpers, goal/assumption/decision command and tool registration, context injection, steering, markdown parsing, cleanup review, and stale accepted-item mutation blocking.
+The tests exercise state helpers, goal/assumption/decision command and tool registration, context injection, steering, markdown parsing, cleanup review, and stale active-item mutation blocking.
 
 ## License
 

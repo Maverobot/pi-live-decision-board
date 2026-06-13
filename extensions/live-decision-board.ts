@@ -2,7 +2,7 @@
  * Live Decision Board
  *
  * A Pi extension that keeps a visible, editable goal/assumptions/decisions board,
- * injects the latest board into model context, and blocks stale accepted-item
+ * injects the latest board into model context, and blocks stale active-item
  * mutations until the board has been injected into a provider request.
  */
 
@@ -12,7 +12,7 @@ import { Key, matchesKey, Text, truncateToWidth } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 
 export type BoardKind = "goal" | "assumption" | "decision";
-export type BoardStatus = "proposed" | "accepted" | "archived";
+export type BoardStatus = "active" | "archived";
 export type BoardStrength = "soft" | "hard";
 export type BoardSource = "user" | "agent" | "discussion-loop";
 
@@ -57,7 +57,7 @@ const DELTA_CUSTOM_TYPE = "live-decision-board-delta";
 const CLEANUP_SUBAGENT_HANDOFF_CUSTOM_TYPE = "live-decision-board-cleanup-subagent-handoff";
 const BOARD_CONTEXT_TYPES = new Set([CONTEXT_CUSTOM_TYPE, VISIBLE_CUSTOM_TYPE, DELTA_CUSTOM_TYPE]);
 
-const BOARD_ITEM_STATUSES: BoardStatus[] = ["proposed", "accepted", "archived"];
+const BOARD_ITEM_STATUSES: BoardStatus[] = ["active", "archived"];
 const BOARD_ITEM_STRENGTHS: BoardStrength[] = ["soft", "hard"];
 const BOARD_ITEM_KINDS: BoardKind[] = ["goal", "assumption", "decision"];
 const BOARD_ITEM_SOURCES: BoardSource[] = ["user", "agent", "discussion-loop"];
@@ -89,7 +89,7 @@ function normalizeBoardText(text: string): string {
 }
 
 function isEnforcedItem(item: Pick<BoardItem, "status">): boolean {
-	return item.status === "accepted";
+	return item.status === "active";
 }
 
 function getHardDecisionBarrierVersion(board: BoardState): number {
@@ -105,7 +105,7 @@ export function addBoardItem(board: BoardState, input: NewBoardItem): BoardState
 	if (!text) throw new Error("Board item text is required");
 
 	const nextVersion = board.version + 1;
-	const status = input.status ?? "accepted";
+	const status = input.status ?? "active";
 	if (!isBoardStatus(status)) throw new Error(`Invalid board item status: ${String(status)}`);
 	const strength = input.strength ?? "soft";
 	const id = nextBoardItemId(board, input.kind);
@@ -122,8 +122,9 @@ export function addBoardItem(board: BoardState, input: NewBoardItem): BoardState
 		updatedAt: timestamp,
 	};
 
-	const archivedActiveGoal = input.kind === "goal" && board.items.some((existing) => isActiveGoal(existing) && isEnforcedItem(existing));
-	const existingItems = input.kind === "goal"
+	const addsActiveGoal = item.kind === "goal" && isActiveItem(item);
+	const archivedActiveGoal = addsActiveGoal && board.items.some((existing) => isActiveGoal(existing));
+	const existingItems = addsActiveGoal
 		? board.items.map((existing) => isActiveGoal(existing) ? { ...existing, status: "archived" as const, version: nextVersion, updatedAt: timestamp } : existing)
 		: board.items;
 
@@ -190,7 +191,7 @@ export function updateBoardItem(board: BoardState, id: string, patch: BoardPatch
 }
 
 function isActiveItem(item: Pick<BoardItem, "status">): boolean {
-	return item.status === "accepted" || item.status === "proposed";
+	return item.status === "active";
 }
 
 function activeBoardItems(board: BoardState): BoardItem[] {
@@ -246,17 +247,6 @@ export function recommendBoardCleanup(board: BoardState): CleanupRecommendation[
 
 function recommendCleanupForItem(item: BoardItem): CleanupRecommendation {
 	const base = cleanupBase(item);
-	if (item.status === "proposed") {
-		return {
-			...base,
-			action: "needs_user_review",
-			selected: false,
-			reason: "Proposed items need user review before cleanup.",
-			riskLevel: "medium risk",
-			requiresExplicitConfirmation: true,
-			source: "local",
-		};
-	}
 	if (looksHistorical(item.text)) {
 		return {
 			...base,
@@ -348,7 +338,7 @@ function normalizeImportedCleanupRecommendations(
 	const boardItems = new Map(board.items.map((item) => [item.id, item] as const));
 	const recommendations: CleanupRecommendation[] = [];
 	const skipped: SkippedRecommendation[] = [];
-	const acceptedRecommendationIds = new Set<string>();
+	const importedRecommendationIds = new Set<string>();
 
 	for (const rawRecommendation of rawRecommendations) {
 		if (!isReviewCleanupRecommendation(rawRecommendation)) {
@@ -370,11 +360,11 @@ function normalizeImportedCleanupRecommendations(
 			skipped.push({ id: recommendation.id, reason: `Board item ${recommendation.id} changed since cleanup was prepared` });
 			continue;
 		}
-		if (acceptedRecommendationIds.has(recommendation.id)) {
+		if (importedRecommendationIds.has(recommendation.id)) {
 			skipped.push({ id: recommendation.id, reason: `Duplicate cleanup recommendation for ${recommendation.id}` });
 			continue;
 		}
-		acceptedRecommendationIds.add(recommendation.id);
+		importedRecommendationIds.add(recommendation.id);
 
 		const action = recommendation.action;
 		const selected = action === "archive";
@@ -401,21 +391,16 @@ function normalizeImportedCleanupRecommendations(
 export interface CleanupImpact {
 	activeBefore: number;
 	activeAfter: number;
-	acceptedBefore: number;
-	acceptedAfter: number;
 	archiveCount: number;
 	needsUserReviewCount: number;
 }
 
 export function summarizeBoardCleanupImpact(board: BoardState, recommendations: CleanupRecommendation[]): CleanupImpact {
 	const activeBefore = activeBoardItems(board).length;
-	const acceptedBefore = activeBoardItems(board).filter((item) => item.status === "accepted").length;
 	const nextBoard = applyBoardCleanup(board, recommendations);
 	return {
 		activeBefore,
 		activeAfter: activeBoardItems(nextBoard).length,
-		acceptedBefore,
-		acceptedAfter: activeBoardItems(nextBoard).filter((item) => item.status === "accepted").length,
 		archiveCount: recommendations.filter((rec) => rec.selected && rec.action === "archive").length,
 		needsUserReviewCount: recommendations.filter((rec) => rec.selected && rec.action === "needs_user_review").length,
 	};
@@ -473,7 +458,6 @@ function formatCleanupImpactForConfirmation(impact: CleanupImpact, selectedRecom
 	const archiveRecommendations = selectedRecommendations.filter((recommendation) => recommendation.action === "archive");
 	const lines = [
 		`Active items: ${impact.activeBefore} → ${impact.activeAfter}`,
-		`Accepted items: ${impact.acceptedBefore} → ${impact.acceptedAfter}`,
 		`Archive: ${impact.archiveCount}`,
 	];
 	if (archiveRecommendations.length > 0) {
@@ -572,7 +556,7 @@ function formatBoardCleanupSubagentPrompt(board: BoardState): string {
 				id: "D1",
 				itemVersion: 1,
 				observedText: "...",
-				observedStatus: "accepted",
+				observedStatus: "active",
 				observedStrength: "soft",
 				action: "archive|keep|needs_user_review",
 				confidence: "low|medium|high",
@@ -595,8 +579,7 @@ export function formatBoardForPrompt(board: BoardState): string {
 	const decisions = active.filter((item) => item.kind === "decision");
 	const lines = [`## Live Goal, Assumptions & Decisions — version ${board.version}`, ""];
 	lines.push("Rules:");
-	lines.push("- Treat accepted items as enforced current context before mutating files.");
-	lines.push("- Proposed items are visible drafts; reconcile or accept them before relying on them as enforced context.");
+	lines.push("- Treat every active item as enforced current context before mutating files.");
 	lines.push("- If current work conflicts with this board, reconcile before continuing.");
 	lines.push("- Keep at most one active Goal plus assumptions or decisions that affect future behavior; do not use the board as an implementation log.");
 	lines.push("");
@@ -610,7 +593,7 @@ export function formatBoardForPrompt(board: BoardState): string {
 }
 
 function formatPromptItem(item: BoardItem): string {
-	return `- ${item.id}: ${item.text} [${item.status}, source:${item.source}, v${item.version}]`;
+	return `- ${item.id}: ${item.text} [source:${item.source}, v${item.version}]`;
 }
 
 export function formatBoardHistory(board: BoardState): string {
@@ -814,7 +797,8 @@ function normalizeRestoredBoardItem(value: unknown): BoardItem | undefined {
 }
 
 function normalizeRestoredBoardStatus(value: unknown): BoardStatus | undefined {
-	if (value === "proposed" || value === "accepted" || value === "archived") return value;
+	if (value === "active" || value === "archived") return value;
+	if (value === "proposed" || value === "accepted") return "active";
 	if (value === "rejected" || value === "superseded") return "archived";
 	return undefined;
 }
@@ -865,7 +849,7 @@ export function parseBoardMarkdown(markdown: string, previousBoard: BoardState):
 			throw new Error(`Invalid board markdown line ${lineIndex + 1}: expected 5 pipe-separated fields`);
 		}
 
-		const [id, kind, status = "accepted", strength = "soft", ...textParts] = fields;
+		const [id, kind, status = "active", strength = "soft", ...textParts] = fields;
 		const text = textParts.join(" | ").trim();
 		const parsedItem = parseMarkdownItem({ id, kind, status, strength, text, lineIndex, previousById, nextVersion, timestamp });
 
@@ -1146,7 +1130,7 @@ function getCustomType(message: unknown): string {
 type BoardManagerAction =
 	| { type: "close" }
 	| { type: "clear" }
-	| { type: "edit" | "accept" | "archive"; id: string };
+	| { type: "edit" | "archive"; id: string };
 
 type CleanupReviewResult = { type: "cancel" } | { type: "apply"; recommendations: CleanupRecommendation[] };
 
@@ -1195,7 +1179,6 @@ class BoardManagerComponent {
 		const selected = this.items[this.selectedIndex];
 		if (!selected) return;
 		if (matchesKey(data, Key.enter) || data === "e") this.done({ type: "edit", id: selected.id });
-		else if (data === "a") this.done({ type: "accept", id: selected.id });
 		else if (data === "r") this.done({ type: "archive", id: selected.id });
 	}
 
@@ -1219,7 +1202,7 @@ class BoardManagerComponent {
 
 		lines.push(
 			"",
-			truncateToWidth(this.theme.fg("dim", "↑↓/j/k select • enter/e edit • a accept • r archive • c clear • q/esc close"), width),
+			truncateToWidth(this.theme.fg("dim", "↑↓/j/k select • enter/e edit • r archive • c clear • q/esc close"), width),
 			truncateToWidth(this.theme.fg("dim", "edit rewrites item text • archive keeps history"), width),
 		);
 		this.cachedWidth = width;
@@ -1241,7 +1224,7 @@ class BoardManagerComponent {
 		const selected = index === this.selectedIndex;
 		const marker = selected ? this.theme.fg("accent", ">") : " ";
 		const id = this.theme.fg("accent", `[${item.id}]`);
-		const statusColor = item.status === "accepted" ? "success" : item.status === "proposed" ? "warning" : "dim";
+		const statusColor = item.status === "active" ? "success" : "dim";
 		const status = this.theme.fg(statusColor, item.status);
 		const text = isActiveItem(item) ? this.theme.fg("muted", item.text) : this.theme.fg("dim", item.text);
 		return truncateToWidth(`${marker} ${id} ${status} ${text}`, width);
@@ -1389,7 +1372,7 @@ class BoardCleanupComponent {
 		const cursor = selected ? this.theme.fg("accent", ">") : " ";
 		const checkbox = recommendation.selected ? this.theme.fg("success", "[x]") : this.theme.fg("dim", "[ ]");
 		const id = this.theme.fg("accent", `[${recommendation.id}]`);
-		const statusColor = recommendation.observedStatus === "accepted" ? "success" : recommendation.observedStatus === "proposed" ? "warning" : "dim";
+		const statusColor = recommendation.observedStatus === "active" ? "success" : "dim";
 		const status = this.theme.fg(statusColor, recommendation.observedStatus);
 		const action = this.theme.fg("warning", this.actionLabel(recommendation.action));
 		const risk = this.theme.fg("muted", recommendation.riskLevel);
@@ -1573,9 +1556,6 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 			return;
 		}
 		switch (action.type) {
-			case "accept":
-				safeApplyBoard(ctx, "Accepted item", () => updateBoardItem(board, item.id, { status: "accepted" }));
-				return;
 			case "archive":
 				safeApplyBoard(ctx, "Archived item", () => updateBoardItem(board, item.id, { status: "archived" }));
 				return;
@@ -1672,7 +1652,7 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 	});
 
 	const compatibilityStrengthMessage =
-		"Accepted items are enforced automatically; /board-hard and /board-soft are compatibility no-ops.";
+		"Active board items are enforced automatically; /board-hard and /board-soft are compatibility no-ops.";
 
 	pi.registerMessageRenderer?.(CLEANUP_SUBAGENT_HANDOFF_CUSTOM_TYPE, renderBoardCleanupSubagentHandoff);
 
@@ -1694,14 +1674,14 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 			ctx.ui.notify(
 				widgetExpanded
 					? "Live Decision Board widget expanded"
-					: "Live Decision Board widget collapsed; summary remains visible, and the board still updates, injects into context, and enforces accepted items.",
+					: "Live Decision Board widget collapsed; summary remains visible, and the board still updates, injects into context, and enforces active items.",
 				"info",
 			);
 		},
 	});
 
 	pi.registerCommand("board-manage", {
-		description: "Primary UI for live board item actions: edit, accept/archive, or clear",
+		description: "Primary UI for live board item actions: edit, archive, or clear",
 		handler: async (_args, ctx) => {
 			if (ctx.mode !== "tui") return ctx.ui.notify("/board-manage requires TUI mode", "error");
 			await manageBoard(ctx);
@@ -1745,7 +1725,7 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 	});
 
 	pi.registerCommand("assume", {
-		description: "Add an accepted assumption to the live board",
+		description: "Add an active assumption to the live board",
 		handler: async (args, ctx) => {
 			const text = args.trim();
 			if (!text) return ctx.ui.notify("Usage: /assume <text>", "warning");
@@ -1754,7 +1734,7 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 	});
 
 	pi.registerCommand("decide", {
-		description: "Add an accepted decision to the live board",
+		description: "Add an active decision to the live board",
 		handler: async (args, ctx) => {
 			const text = args.trim();
 			if (!text) return ctx.ui.notify("Usage: /decide <text>", "warning");
@@ -1763,14 +1743,14 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 	});
 
 	pi.registerCommand("board-hard", {
-		description: "Compatibility no-op: accepted items are enforced automatically",
+		description: "Compatibility no-op: active board items are enforced automatically",
 		handler: async (_args, ctx) => {
 			ctx.ui.notify(`Compatibility: ${compatibilityStrengthMessage}`, "info");
 		},
 	});
 
 	pi.registerCommand("board-soft", {
-		description: "Compatibility no-op: deprecate board-soft in favor of accepted-item enforcement",
+		description: "Compatibility no-op: deprecate board-soft in favor of active-item enforcement",
 		handler: async (_args, ctx) => {
 			ctx.ui.notify(`Compatibility: ${compatibilityStrengthMessage}`, "info");
 		},
@@ -1784,13 +1764,6 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 		description: "Power-user fallback: archive a board item by id; prefer /board-manage",
 		handler: async (args, ctx) => {
 			archiveBoardById(args, ctx);
-		},
-	});
-
-	pi.registerCommand("board-accept", {
-		description: "Power-user fallback: accept a board item by id; prefer /board-manage",
-		handler: async (args, ctx) => {
-			safeApplyBoard(ctx, "Accepted item", () => updateBoardItem(board, args.trim(), { status: "accepted" }));
 		},
 	});
 
@@ -1824,10 +1797,9 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 		description: "List or update the live goal/assumptions/decisions board.",
 		promptSnippet: "List or update the current goal, assumptions, and decisions for the current project.",
 		promptGuidelines: [
-			"Use decision_board to record one current goal plus accepted assumptions or decisions and enforce them as the current contract for this work.",
-			"Use decision_board before acting on an accepted decision that is not already recorded in the live board.",
-			"Treat proposed items as visible draft goals/assumptions/decisions; reconcile them before marking them accepted.",
-			"Use decision_board as a current-context contract, not as an implementation log for progress updates, tests run, files changed, or completed review batches.",
+			"Use decision_board to record one current goal plus active assumptions or decisions and enforce them as the current contract for this work.",
+			"Use decision_board before acting on a decision that is not already recorded in the live board.",
+						"Use decision_board as a current-context contract, not as an implementation log for progress updates, tests run, files changed, or completed review batches.",
 			"Use a single read-only recommendation subagent for future board cleanup runs; do not launch multiple parallel board-cleanup recommendation subagents unless explicitly requested.",
 			"After /board-cleanup-subagent recommendations are prepared, call decision_board.review_cleanup with the recommendation objects for interactive review.",
 			"Use decision_board archive only for routine deprecated or stale active items after listing the current board; include the observed itemVersion and a reason, and prefer review_cleanup when current-context impact is ambiguous.",
@@ -1835,11 +1807,10 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 		],
 		executionMode: "sequential",
 		parameters: Type.Object({
-			action: StringEnum(["list", "add", "update", "set_status", "set_strength", "archive", "review_cleanup"] as const),
+			action: StringEnum(["list", "add", "update", "set_strength", "archive", "review_cleanup"] as const),
 			id: Type.Optional(Type.String()),
 			kind: Type.Optional(StringEnum(["goal", "assumption", "decision"] as const)),
 			text: Type.Optional(Type.String()),
-			status: Type.Optional(StringEnum(["proposed", "accepted"] as const)),
 			strength: Type.Optional(StringEnum(["soft", "hard"] as const)),
 			itemVersion: Type.Optional(Type.Number()),
 			reason: Type.Optional(Type.String()),
@@ -1852,12 +1823,10 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 
 			if (params.action === "add") {
 				if (!params.kind || !params.text?.trim()) throw new Error("decision_board add requires kind and text");
-				const requestedStatus = params.status as string | undefined;
-				if (requestedStatus === "archived") throw new Error("decision_board add cannot create archived items; add current guidance as proposed or accepted");
 				const nextBoard = addBoardItem(board, {
 					kind: params.kind,
 					text: params.text,
-					status: params.status ?? "proposed",
+					status: "active",
 					strength: params.strength ?? "soft",
 					source: "agent",
 				});
@@ -1935,21 +1904,18 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 			if (params.action === "update") {
 				if (!params.text?.trim()) throw new Error("decision_board update requires non-empty text");
 				nextBoard = updateBoardItem(board, targetId, { text: params.text });
-			} else if (params.action === "set_status") {
-				if (!params.status) throw new Error("decision_board set_status requires status");
-				const requestedStatus = params.status as string;
-				if (requestedStatus === "archived") throw new Error("decision_board set_status cannot archive items; use action=archive with itemVersion and reason");
-				nextBoard = updateBoardItem(board, targetId, { status: params.status });
-			} else {
+			} else if (params.action === "set_strength") {
 				return {
 					content: [
 						{
 							type: "text",
-							text: "No change: decision_board set_strength is deprecated. Accepted board items are enforced automatically and legacy strength changes are a no-op.",
+							text: "No change: decision_board set_strength is deprecated. Active board items are enforced automatically and legacy strength changes are a no-op.",
 						},
 					],
 					details: { board },
 				};
+			} else {
+				throw new Error(`Unsupported decision_board action: ${String(params.action)}`);
 			}
 			const result = commitBoard(nextBoard, ctx, "agent");
 			return {

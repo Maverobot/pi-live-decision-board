@@ -17,7 +17,7 @@ const board = mod.createEmptyBoard();
 const withAssumption = mod.addBoardItem(board, {
 	kind: "assumption",
 	text: "Backend uses Node 22",
-	status: "accepted",
+	status: "active",
 	strength: "soft",
 	source: "user",
 });
@@ -28,7 +28,7 @@ assert.equal(withAssumption.items[0].id, "A1", "assumptions use A-prefixed ids")
 const withDecision = mod.addBoardItem(withAssumption, {
 	kind: "decision",
 	text: "Build as a Pi extension first",
-	status: "accepted",
+	status: "active",
 	strength: "hard",
 	source: "user",
 });
@@ -39,7 +39,7 @@ assert.equal(withDecision.items[1].id, "D1", "decisions use D-prefixed ids");
 const withGoal = mod.addBoardItem(withDecision, {
 	kind: "goal",
 	text: "Ship a focused board workflow",
-	status: "accepted",
+	status: "active",
 	strength: "soft",
 	source: "user",
 });
@@ -48,17 +48,26 @@ assert.equal(withGoal.items.at(-1).kind, "goal", "goal items keep their distinct
 const withSecondGoal = mod.addBoardItem(withGoal, {
 	kind: "goal",
 	text: "Polish board taxonomy",
-	status: "accepted",
+	status: "active",
 	strength: "soft",
 	source: "user",
 });
 assert.equal(withSecondGoal.items.find((item) => item.id === "G1").status, "archived", "adding a new goal archives the previous active goal");
 assert.equal(withSecondGoal.items.at(-1).id, "G2", "new goals use the next G-prefixed id");
-assert.equal(withSecondGoal.items.filter((item) => item.kind === "goal" && (item.status === "accepted" || item.status === "proposed")).length, 1, "only one goal remains active");
-const reactivatedFirstGoal = mod.updateBoardItem(withSecondGoal, "G1", { status: "accepted" });
-assert.equal(reactivatedFirstGoal.items.find((item) => item.id === "G1").status, "accepted", "archived goals can be accepted again");
-assert.equal(reactivatedFirstGoal.items.find((item) => item.id === "G2").status, "archived", "accepting an archived goal archives the previous active goal");
-assert.equal(reactivatedFirstGoal.items.filter((item) => item.kind === "goal" && (item.status === "accepted" || item.status === "proposed")).length, 1, "re-accepting a goal preserves the single active goal invariant");
+assert.equal(withSecondGoal.items.filter((item) => item.kind === "goal" && item.status === "active").length, 1, "only one goal remains active");
+const reactivatedFirstGoal = mod.updateBoardItem(withSecondGoal, "G1", { status: "active" });
+assert.equal(reactivatedFirstGoal.items.find((item) => item.id === "G1").status, "active", "archived goals can be made active again");
+assert.equal(reactivatedFirstGoal.items.find((item) => item.id === "G2").status, "archived", "reactivating an archived goal archives the previous active goal");
+assert.equal(reactivatedFirstGoal.items.filter((item) => item.kind === "goal" && item.status === "active").length, 1, "reactivating a goal preserves the single active goal invariant");
+const withArchivedGoalHistory = mod.addBoardItem(withGoal, {
+	kind: "goal",
+	text: "Historical goal",
+	status: "archived",
+	strength: "soft",
+	source: "user",
+});
+assert.equal(withArchivedGoalHistory.items.find((item) => item.id === "G1").status, "active", "adding archived goal history does not archive the current active goal");
+assert.equal(withArchivedGoalHistory.items.at(-1).status, "archived", "archived goal history remains inactive");
 assert.match(mod.formatBoardStatus(withSecondGoal), /1 goal/, "status summary includes the active goal count");
 
 const prompt = mod.formatBoardForPrompt(withSecondGoal);
@@ -68,35 +77,35 @@ assert.match(prompt, /G2: Polish board taxonomy/);
 assert.doesNotMatch(prompt, /G1: Ship a focused board workflow/, "archived goals leave active prompt context");
 assert.match(prompt, /A1: Backend uses Node 22/);
 assert.match(prompt, /D1: Build as a Pi extension first/);
-assert.match(prompt, /Treat accepted items as enforced current context before mutating files/);
-assert.match(prompt, /Proposed items are visible drafts/, "prompt explains proposed-item drafts");
+assert.match(prompt, /Treat every active item as enforced current context before mutating files/);
+assert.doesNotMatch(prompt, /\[(?:proposed|accepted),/i, "prompt does not expose retired status metadata");
 assert.doesNotMatch(prompt, /\bsoft\b|\bhard\b/, "prompt metadata should hide legacy strength labels");
 
 const widgetDecisionOne = mod.addBoardItem(withAssumption, {
 	kind: "decision",
 	text: "First decision",
-	status: "accepted",
+	status: "active",
 	strength: "soft",
 	source: "user",
 });
 const widgetDecisionTwo = mod.addBoardItem(widgetDecisionOne, {
 	kind: "decision",
 	text: "Second decision",
-	status: "accepted",
+	status: "active",
 	strength: "soft",
 	source: "user",
 });
 const widgetBoardWithoutGoal = mod.addBoardItem(widgetDecisionTwo, {
 	kind: "assumption",
 	text: "Second assumption",
-	status: "accepted",
+	status: "active",
 	strength: "soft",
 	source: "user",
 });
 const widgetBoard = mod.addBoardItem(widgetBoardWithoutGoal, {
 	kind: "goal",
 	text: "Current goal",
-	status: "accepted",
+	status: "active",
 	strength: "soft",
 	source: "user",
 });
@@ -146,25 +155,25 @@ let cleanupBoard = mod.createEmptyBoard();
 cleanupBoard = mod.addBoardItem(cleanupBoard, {
 	kind: "decision",
 	text: "Apply Round 5 review fixes for stale guards",
-	status: "accepted",
+	status: "active",
 	strength: "soft",
 });
 cleanupBoard = mod.addBoardItem(cleanupBoard, {
 	kind: "decision",
 	text: "Use keyboard-first board management",
-	status: "accepted",
+	status: "active",
 	strength: "hard",
 });
 cleanupBoard = mod.addBoardItem(cleanupBoard, {
 	kind: "assumption",
 	text: "Need user confirmation on archive wording",
-	status: "proposed",
+	status: "active",
 	strength: "soft",
 });
 cleanupBoard = mod.addBoardItem(cleanupBoard, {
 	kind: "decision",
 	text: "Current product direction remains board hygiene",
-	status: "accepted",
+	status: "active",
 	strength: "soft",
 });
 
@@ -178,13 +187,13 @@ assert(cleanupD1, "cleanup includes first decision");
 assert.equal(cleanupD1.action, "archive");
 assert.equal(cleanupD1.selected, true);
 assert.match(cleanupD1.reason, /historical/i);
-assert(cleanupD2, "cleanup includes accepted decision");
-assert.equal(cleanupD2.action, "keep", "accepted items default keep");
+assert(cleanupD2, "cleanup includes active decision");
+assert.equal(cleanupD2.action, "keep", "active items default keep");
 assert.equal(cleanupD2.riskLevel, "low risk", "legacy strength no longer creates special cleanup risk");
 assert.doesNotMatch(cleanupD2.reason, /Hard constraints/i, "recommendation reason does not reference legacy hard constraints");
 assert(cleanupA1, "cleanup includes assumption");
-assert.equal(cleanupA1.action, "needs_user_review", "proposed items need review");
-assert.equal(cleanupA1.riskLevel, "medium risk", "proposed cleanup recommendations use explicit risk labels");
+assert.equal(cleanupA1.action, "keep", "non-historical active assumptions default keep");
+assert.equal(cleanupA1.riskLevel, "low risk", "kept active assumptions use low-risk no-op cleanup labels");
 assert.equal(cleanupA1.selected, false);
 assert(cleanupD3, "cleanup includes ambiguous decision");
 assert.equal(cleanupD3.action, "keep", "ambiguous current items default keep");
@@ -192,7 +201,7 @@ assert.equal(cleanupD3.action, "keep", "ambiguous current items default keep");
 const legacyHardHistoricalBoard = mod.addBoardItem(mod.createEmptyBoard(), {
 	kind: "decision",
 	text: "Apply Round 7 review fixes",
-	status: "accepted",
+	status: "active",
 	strength: "hard",
 });
 const legacyHardHistorical = mod.recommendBoardCleanup(legacyHardHistoricalBoard)[0];
@@ -209,8 +218,6 @@ const archivePlan = cleanupRecommendations.map((rec) =>
 const cleanupImpact = mod.summarizeBoardCleanupImpact(cleanupBoard, archivePlan);
 assert.equal(cleanupImpact.activeBefore, 4);
 assert.equal(cleanupImpact.activeAfter, 3);
-assert.equal(cleanupImpact.acceptedBefore, 3);
-assert.equal(cleanupImpact.acceptedAfter, 2);
 assert.equal(cleanupImpact.archiveCount, 1);
 
 const cleanedBoard = mod.applyBoardCleanup(cleanupBoard, archivePlan);
@@ -222,7 +229,7 @@ assert.match(boardHistory, /Live Decision Board History/);
 assert.match(boardHistory, /Active items:/);
 assert.match(boardHistory, /Inactive history:/);
 assert.match(boardHistory, /\[D1\].*Apply Round 5.*archived/, "board history exposes archived items with archive terminology");
-assert.match(boardHistory, /\[D2\].*Use keyboard-first board management.*accepted/, "board history includes active items for context");
+assert.match(boardHistory, /\[D2\].*Use keyboard-first board management.*active/, "board history includes active items for context");
 
 const directArchiveBoard = mod.archiveBoardItem(cleanupBoard, "D2", cleanupD2.itemVersion);
 assert.equal(directArchiveBoard.items.find((item) => item.id === "D2").status, "archived", "direct archive maps to first-class inactive retained status");
@@ -256,12 +263,12 @@ assert.throws(() => mod.applyBoardCleanup(cleanupBoard, stalePlan), /changed sin
 const archived = mod.updateBoardItem(withDecision, "A1", { status: "archived" });
 assert.equal(archived.version, 3, "updating item increments version");
 assert.equal(archived.items[0].status, "archived");
-assert.throws(() => mod.updateBoardItem(withDecision, "A1", { status: "rejected" }), /Invalid board item status/, "legacy rejected status is no longer accepted");
-assert.throws(() => mod.updateBoardItem(withDecision, "A1", { status: "superseded" }), /Invalid board item status/, "legacy superseded status is no longer accepted");
+assert.throws(() => mod.updateBoardItem(withDecision, "A1", { status: "rejected" }), /Invalid board item status/, "retired rejected status is no longer valid for direct updates");
+assert.throws(() => mod.updateBoardItem(withDecision, "A1", { status: "superseded" }), /Invalid board item status/, "retired superseded status is no longer valid for direct updates");
 
 const unchangedByUndefined = mod.updateBoardItem(withDecision, "D1", { status: undefined, strength: undefined });
 assert.equal(unchangedByUndefined.version, withDecision.version, "undefined-only patches are no-ops");
-assert.equal(unchangedByUndefined.items[1].status, "accepted", "undefined patch fields are ignored");
+assert.equal(unchangedByUndefined.items[1].status, "active", "undefined patch fields are ignored");
 assert.equal(unchangedByUndefined.items[1].strength, "hard", "undefined strength is ignored");
 
 const unchangedBySameStrength = mod.updateBoardItem(withDecision, "D1", { strength: "hard" });
@@ -270,7 +277,7 @@ assert.equal(unchangedBySameStrength.version, withDecision.version, "same-value 
 const archivedAndAdded = mod.addBoardItem(mod.archiveBoardItem(withDecision, "D1", withDecision.items.find((item) => item.id === "D1").version), {
 	kind: "decision",
 	text: "Build extension MVP first",
-	status: "accepted",
+	status: "active",
 });
 assert.equal(archivedAndAdded.items.find((item) => item.id === "D1").status, "archived");
 assert.match(mod.formatBoardHistory(archivedAndAdded), /\[D1\].*archived/, "board history exposes archived items");
@@ -284,48 +291,33 @@ assert.match(mod.formatBoardStatus(withDecision), /Board v2 • 1 assumption •
 assert.match(mod.formatBoardStatus(withSecondGoal), /Board v4 • 1 goal • 1 assumption • 1 decision/);
 assert.doesNotMatch(mod.formatBoardStatus(withDecision), /hard constraint/, "status summary should not include legacy hard constraint counts");
 
-const acceptedSoftBoard = mod.addBoardItem(mod.createEmptyBoard(), {
+const activeSoftBoard = mod.addBoardItem(mod.createEmptyBoard(), {
 	kind: "decision",
-	text: "Accepted decisions are enforced",
-	status: "accepted",
+	text: "Active decisions are enforced",
+	status: "active",
 	strength: "soft",
 });
-const acceptedSoftBoardEnforced = mod.hasUninjectedEnforcedChanges(acceptedSoftBoard, 0);
-assert.equal(acceptedSoftBoardEnforced, true, "accepted items are enforced until injected");
-assert.equal(mod.hasUninjectedHardChanges(acceptedSoftBoard, 0), acceptedSoftBoardEnforced, "legacy hard helper delegates to enforced helper");
+const activeSoftBoardEnforced = mod.hasUninjectedEnforcedChanges(activeSoftBoard, 0);
+assert.equal(activeSoftBoardEnforced, true, "active items are enforced until injected");
+assert.equal(mod.hasUninjectedHardChanges(activeSoftBoard, 0), activeSoftBoardEnforced, "legacy hard helper delegates to enforced helper");
 assert.equal(
-	mod.hasUninjectedEnforcedChanges(acceptedSoftBoard, acceptedSoftBoard.version),
+	mod.hasUninjectedEnforcedChanges(activeSoftBoard, activeSoftBoard.version),
 	false,
-	"accepted items stop blocking after the current board is injected",
+	"active items stop blocking after the current board is injected",
 );
 
-const proposedOnlyBoard = mod.addBoardItem(mod.createEmptyBoard(), {
-	kind: "decision",
-	text: "Draft policy",
-	status: "proposed",
-	strength: "soft",
-});
-assert.equal(mod.hasUninjectedEnforcedChanges(proposedOnlyBoard, 0), false, "proposed items are visible but not enforced");
-
-const acceptedFromProposed = mod.updateBoardItem(proposedOnlyBoard, "D1", { status: "accepted" });
+assert.equal(mod.hasUninjectedEnforcedChanges(withDecision, 1), true, "active changes after injected version are detected");
+assert.equal(mod.hasUninjectedEnforcedChanges(withDecision, 2), false, "injected active changes are not stale");
+const archivedActive = mod.updateBoardItem(withDecision, "D1", { status: "archived" });
+assert.equal(mod.hasUninjectedEnforcedChanges(archivedActive, 2), true, "archiving an active item remains stale-sensitive until injected");
+const legacyStrengthChanged = mod.updateBoardItem(activeSoftBoard, "D1", { strength: "hard" });
 assert.equal(
-	mod.hasUninjectedEnforcedChanges(acceptedFromProposed, proposedOnlyBoard.version),
-	true,
-	"accepting a proposed item creates a stale enforced barrier",
-);
-
-assert.equal(mod.hasUninjectedEnforcedChanges(withDecision, 1), true, "accepted changes after injected version are detected");
-assert.equal(mod.hasUninjectedEnforcedChanges(withDecision, 2), false, "injected accepted changes are not stale");
-const archivedAccepted = mod.updateBoardItem(withDecision, "D1", { status: "archived" });
-assert.equal(mod.hasUninjectedEnforcedChanges(archivedAccepted, 2), true, "archiving an accepted item remains stale-sensitive until injected");
-const legacyStrengthChanged = mod.updateBoardItem(acceptedSoftBoard, "D1", { strength: "hard" });
-assert.equal(
-	mod.hasUninjectedEnforcedChanges(legacyStrengthChanged, acceptedSoftBoard.version),
+	mod.hasUninjectedEnforcedChanges(legacyStrengthChanged, activeSoftBoard.version),
 	false,
 	"legacy strength-only changes do not create enforcement barriers",
 );
-const clearedAcceptedBoard = mod.clearBoard(acceptedSoftBoard);
-assert.equal(mod.hasUninjectedEnforcedChanges(clearedAcceptedBoard, acceptedSoftBoard.version), true, "clearing accepted items remains stale-sensitive until injected");
+const clearedActiveBoard = mod.clearBoard(activeSoftBoard);
+assert.equal(mod.hasUninjectedEnforcedChanges(clearedActiveBoard, activeSoftBoard.version), true, "clearing active items remains stale-sensitive until injected");
 
 const restored = mod.restoreBoardFromEntries([
 	{ type: "custom", customType: "live-decision-board", data: withAssumption },
@@ -409,25 +401,30 @@ const futureItemVersionRestored = mod.restoreBoardFromEntries([
 	},
 ]);
 assert.deepEqual(futureItemVersionRestored, mod.createEmptyBoard(), "item versions newer than the board are rejected");
-const zeroVersionAcceptedRestored = mod.restoreBoardFromEntries([
+const zeroVersionActiveRestored = mod.restoreBoardFromEntries([
 	{
 		type: "custom",
 		customType: "live-decision-board",
 		data: { ...withDecision, version: 0, hardDecisionBarrierVersion: 0, items: [{ ...withDecision.items[1], version: 0 }] },
 	},
 ]);
-assert.deepEqual(zeroVersionAcceptedRestored, mod.createEmptyBoard(), "zero-version restored accepted items are rejected");
+assert.deepEqual(zeroVersionActiveRestored, mod.createEmptyBoard(), "zero-version restored active items are rejected");
 
-const legacyMarkdown = "# Live Decision Board\n\n- D1 | decision | accepted | hard | Legacy hard item\n";
+const markdownWithActiveStatus = "# Live Decision Board\n\n- D1 | decision | active | hard | Active hard item\n";
+assert.throws(
+	() => mod.parseBoardMarkdown("# Live Decision Board\n\n- D1 | decision | accepted | soft | Old status\n", mod.createEmptyBoard()),
+	/Invalid board item status/,
+	"markdown parser rejects removed active-state status values",
+);
 assert.throws(
 	() => mod.parseBoardMarkdown("# Live Decision Board\n\n- D1 | decision | rejected | soft | Old status\n", mod.createEmptyBoard()),
 	/Invalid board item status/,
-	"markdown parser rejects removed status values",
+	"markdown parser rejects removed inactive-state status values",
 );
-const parsedLegacy = mod.parseBoardMarkdown(legacyMarkdown, mod.createEmptyBoard());
-assert.equal(parsedLegacy.items[0].strength, "hard", "legacy strength is still parsed for session compatibility");
-assert.equal(mod.hasUninjectedEnforcedChanges(parsedLegacy, 0), true, "accepted legacy items are enforced regardless of strength");
-assert.match(mod.serializeBoardMarkdown(parsedLegacy), /\| hard \|/, "serialize keeps strength as compatibility markdown format");
+const parsedActiveMarkdown = mod.parseBoardMarkdown(markdownWithActiveStatus, mod.createEmptyBoard());
+assert.equal(parsedActiveMarkdown.items[0].strength, "hard", "legacy strength is still parsed for session compatibility");
+assert.equal(mod.hasUninjectedEnforcedChanges(parsedActiveMarkdown, 0), true, "active items are enforced regardless of strength");
+assert.match(mod.serializeBoardMarkdown(parsedActiveMarkdown), /\| hard \|/, "serialize keeps strength as compatibility markdown format");
 
 const markdown = mod.serializeBoardMarkdown(withDecision);
 const parsed = mod.parseBoardMarkdown(markdown.replace("soft", "hard"), withDecision);
@@ -437,7 +434,7 @@ assert.equal(parsed.items.find((item) => item.id === "A1").version, parsed.versi
 const multilineBoard = mod.addBoardItem(board, {
 	kind: "assumption",
 	text: "Line one\nline two",
-	status: "accepted",
+	status: "active",
 	strength: "soft",
 	source: "user",
 });

@@ -35,7 +35,7 @@ The board succeeds only if it stays small enough to scan and strong enough to st
 * Mental model: active board = working contract
 The board has two layers:
 
-1. *Active working set* — accepted/proposed items that still steer the agent and appear in active context/widget views.
+1. *Active working set* — active items that still steer the agent and appear in active context/widget views.
 2. *Audit/history* — archived or documented items that remain available for review but do not steer the next model turn.
 
 The active board is not a task log. It is closer to a contract, checklist, and set of current constraints.
@@ -70,19 +70,17 @@ Do not add board items for:
 3. *Capture at commitment points.* Add items when a decision will be reused, not when work merely progresses.
 4. *Current truth over provenance.* Active text should read like present-tense guidance, not history.
 5. *Controlled cleanup.* Agents may directly archive clearly routine deprecated items with current itemVersion plus a reason; ambiguous/current-context removals still require user review.
-6. *Accepted items are trust boundaries.* Accepted-item changes require either a narrow direct-archive reason for stale items or explicit confirmation with before/after impact.
+6. *Active items are trust boundaries.* Active-item changes require either a narrow direct-archive reason for stale items or explicit confirmation with before/after impact.
 7. *Prefer edit or archive-plus-add over duplication.* One clear current rule beats many historical entries.
 8. *Cleanup must feel safe.* Auditability and reversibility matter because users must trust cleanup.
 9. *No nagging.* Hygiene prompts are passive, dismissible, and tied to natural workflow boundaries.
 
-The board now treats `accepted` items as enforced context; `proposed` items are visible drafts and not enforced until accepted.
+The board now treats every active item as enforced context; archived items are retained history only.
 
 * Definitions and action vocabulary
 | Term | Meaning | Context effect |
 |------|---------|----------------|
-| Active | Accepted/proposed item that still steers the agent | Included in widget/context |
-| Accepted | User/model has committed to treating this as current | Included and enforced |
-| Proposed | Candidate item needing review, but still visible as current uncertainty | Included in context |
+| Active | Item that still steers the agent | Included in widget/context and enforced |
 | Compatibility strength | Legacy `soft`/`hard` field in existing markdown/state payloads | Ignored for enforcement |
 | Archived | First-class status for removing a once-useful item from active context without saying it was false | Inactive retained state visible via =/board-history= |
 | Documented | Product fact belongs in README/design docs, not active board | Docs become source of truth |
@@ -95,9 +93,9 @@ The board now treats `accepted` items as enforced context; `proposed` items are 
 | Item type | Default action | Rationale |
 |-----------+----------------+-----------|
 | Current user preference | Keep active | Still guides future work |
-| Accepted safety/architecture constraint | Keep active | Steers future work and participates in accepted-item stale-mutation protection |
+| Active safety/architecture constraint | Keep active | Steers future work and participates in active-item stale-mutation protection |
 | Open product direction | Keep active | Still affects choices |
-| Unresolved assumption/question | Keep proposed or ask user | Needs attention before relying on it |
+| Unresolved assumption/question | Keep active or ask user | Needs attention before relying on it |
 | Completed implementation step | Archive from active board | Historical only |
 | Completed review batch | Archive from active board | Belongs in commits/reviews, not active context |
 | Old wording for a still-valid rule | Edit if same meaning; otherwise archive old text and add current guidance | Preserve signal with archive-plus-add semantics |
@@ -105,14 +103,14 @@ The board now treats `accepted` items as enforced context; `proposed` items are 
 | Product fact already documented | Move to docs + archive | README/design docs are better source of truth |
 | Ambiguous item | Ask user / keep by default | Cleanup should be conservative |
 | Clearly deprecated active item | Direct archive allowed with current version + reason | Routine hygiene should not require manual cleanup UI |
-| Accepted item proposed for ambiguous removal/adjustment | Per-item explicit confirmation | Avoid weakening steering context silently |
+| Active item targeted for ambiguous removal/adjustment | Per-item explicit confirmation | Avoid weakening steering context silently |
 
 * User workflows
 ** Start of task: establish steering context
 - Read the active board summary.
 - If the board is noisy, run cleanup before starting deep work.
 - Add only task-relevant constraints/preferences.
-- Treat accepted items as safety boundaries for stale mutation.
+- Treat active items as safety boundaries for stale mutation.
 
 ** During task: capture commitment points
 Add/update a board item when:
@@ -158,7 +156,7 @@ Ship the smallest workflow that reduces noise without adding too much machinery.
   - do not use the board as an implementation log,
   - add items only when they affect future behavior,
   - edit or archive stale entries before adding duplicates,
-  - use accepted/proposed status intentionally instead of legacy hard/soft language.
+  - use active/archived status intentionally instead of legacy hard/soft language.
 - Add examples of good vs bad board items.
 
 ** Stage 2: manual/local =/board-cleanup=
@@ -167,8 +165,8 @@ A TUI-only command that uses local heuristics and user confirmation.
 MVP behavior:
 
 1. Load current active board items only.
-2. Classify obvious historical accepted items as archive candidates.
-3. Keep accepted, proposed, and ambiguous items by default.
+2. Classify obvious historical active items as archive candidates.
+3. Keep active and ambiguous items by default.
 4. Present a review UI sorted by recommended action, showing item id, status, compatibility strength when present, action, risk, text, and reason.
 5. Let user toggle selected low-risk archive actions, apply, or cancel.
 6. Apply selected archive actions through existing board helpers in one confirmed operation.
@@ -233,13 +231,12 @@ Groups:
 - Archive from active board
 - Edit or archive-plus-add
 - Needs user decision
-- Accepted items requiring explicit confirmation
+- Active items requiring explicit confirmation
 
 ** Confirm screen
 Show before/after impact:
 
 - active item count before/after
-- accepted item count before/after
 - items archived
 - items needing user review
 - preview of next active board snapshot
@@ -258,24 +255,24 @@ Actions:
 - Ensure the next model turn receives fresh board context before mutating work.
 
 * Safety requirements
-** Accepted items as enforced context
-Accepted is not a synonym for permanent or uneditable, but it does mean the item is part of the current operating contract.
+** Active items as enforced context
+Active is not a synonym for permanent or uneditable, but it does mean the item is part of the current operating contract.
 
-Accepted items are enforced for stale-mutation safety:
+Active items are enforced for stale-mutation safety:
 
 - explicit user constraints,
 - safety-critical rules,
 - architectural boundaries that must not be crossed,
 - assumptions or decisions the model must see before mutating files.
 
-Use =proposed= for uncertain items that should remain visible but should not become enforced until reviewed.
+Use assumptions for uncertain items that should remain visible.
 
-** Accepted-item preservation
-Accepted items default to keep unless they are clearly historical or no longer useful.
+** Active-item preservation
+Active items default to keep unless they are clearly historical or no longer useful.
 
-Any action that archives or clears an accepted item should require user confirmation.
+Any action that archives or clears an active item should require user confirmation.
 
-Archiving an accepted item should warn:
+Archiving an active item should warn:
 
 #+begin_quote
 This removes or changes enforced current context.
@@ -300,7 +297,7 @@ This mirrors the existing board epoch guard pattern used by interactive editors/
 ** Cleanup suggestions are not board items
 Cleanup suggestions should be transient UI state or a separate custom entry excluded from provider context.
 
-Do not store cleanup suggestions as =proposed= board items because proposed items are active and injected into model context.
+Do not store cleanup suggestions as board items because active items are injected into model context.
 
 ** Subagent isolation
 A cleanup subagent, when used, should be read-only:
@@ -317,7 +314,7 @@ Bulk apply is allowed only for low-risk historical cleanup.
 
 Per-item confirmation is required for:
 
-- accepted item archival or clearing
+- active item archival or clearing
 - hard delete
 - compatibility strength changes, if any future workflow reintroduces them
 - ambiguous items
@@ -328,22 +325,20 @@ Cancel must leave board state untouched.
 * Agent and tool guidance changes
 The model should use =decision_board= only for the current goal and currently actionable assumptions/decisions.
 
-Proposed guidance:
+Guidance:
 
 - Use =decision_board= only when the current goal or item should alter future behavior.
 - Do not record progress, implementation steps, review batches, tests run, files changed, or completed tasks.
 - Before adding, inspect existing items; edit, archive stale entries, or ask about cleanup instead of adding duplicates.
 - Keep at most one active Goal. Use it for the current objective; use Assumptions for uncertain/contextual facts; use Decisions for durable choices or constraints that should guide future work.
 - Write evergreen constraint/preference text, not "we implemented..." or "round N fixed...".
-- Use =proposed= for uncertain items.
-- Do not accept or archive user-owned or accepted items without explicit user confirmation.
-- Use =accepted= only when an item should become enforced current context; use =proposed= for drafts awaiting review.
+- Do not archive user-owned or active items without explicit user confirmation.
 - If the board is becoming historical/noisy, suggest =/board-cleanup=; do not add a board item saying cleanup happened.
 
 * Local cleanup heuristics
 Local heuristics should be conservative and explainable. The workflow uses only archive, keep, and needs-review recommendations; preserving a still-useful principle is handled by editing same-meaning text or archiving and adding new guidance separately.
 
-** MVP: suggest archive when accepted text looks historical
+** MVP: suggest archive when active text looks historical
 Examples:
 
 - starts with "Implement ..." and the feature exists/docs mention it
@@ -356,7 +351,7 @@ Examples:
 Especially for:
 
 - user preferences
-- accepted constraints
+- active constraints
 - open product direction
 - safety constraints
 - items with unclear status
@@ -391,11 +386,9 @@ Historical/deferred command-shape notes:
       "id": "D7",
       "itemVersion": 10,
       "observedText": "Apply Round 5 review fixes...",
-      "observedStatus": "accepted",
+      "observedStatus": "active",
       "observedStrength": "soft",
       "action": "archive",
-      "proposedStatus": "archived",
-      "proposedStrength": "soft",
       "confidence": "high",
       "riskLevel": "low risk",
       "requiresExplicitConfirmation": false,
@@ -416,7 +409,7 @@ Risk levels estimate the chance that a recommendation would remove or rewrite st
 
 - low risk: obvious historical clutter or safe no-op recommendation
 - medium risk: needs human judgment; a principle may remain but wording/action may need change
-- high risk: likely current-context impact, accepted constraints, or ambiguous user intent
+- high risk: likely current-context impact, active constraints, or ambiguous user intent
 
 Confidence is separate from risk: confidence records evidence strength for the recommendation; risk records potential harm if the recommendation is wrong.
 
@@ -440,7 +433,7 @@ Board hygiene is successful when:
 
 - active board usually stays under 7 items during normal work
 - user can clean a noisy board in under one minute
-- cleanup never changes accepted current context without explicit confirmation
+- cleanup never changes active current context without explicit confirmation
 - cleanup never creates new active clutter
 - model guidance reduces implementation-log board entries
 - historical items remain auditable
@@ -485,7 +478,7 @@ Implement Board Hygiene in this order:
 
 1. Guidance and docs: make the board's purpose and anti-changelog rules explicit.
 2. Manual/local =/board-cleanup=: conservative classification, review UI, user-confirmed apply.
-3. Safety hardening: impact preview, accepted-item per-item confirmations, stale recommendation validation.
+3. Safety hardening: impact preview, active-item per-item confirmations, stale recommendation validation.
 4. Optional subagent-assisted cleanup: structured read-only recommendations with local fallback.
 5. Passive hygiene prompts after the manual workflow proves useful.
 
