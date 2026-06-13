@@ -61,6 +61,7 @@ Entries are inferred from conventional git commit messages. Regenerate with `npm
 
 ### Changed
 
+- use archive-only board statuses (672a55f)
 - name enforced board barriers (d86fe98)
 
 ### Documentation
