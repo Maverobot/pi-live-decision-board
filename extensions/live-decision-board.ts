@@ -213,7 +213,7 @@ function activeBoardItems(board: BoardState): BoardItem[] {
 }
 
 export type CleanupAction = "keep" | "archive" | "supersede" | "needs_user_review";
-export type CleanupRiskLevel = "low" | "medium" | "high";
+export type CleanupRiskLevel = "low risk" | "medium risk" | "high risk";
 export type CleanupConfidence = "low" | "medium" | "high";
 export type CleanupRecommendationSource = "local" | "imported";
 
@@ -269,7 +269,7 @@ function recommendCleanupForItem(item: BoardItem): CleanupRecommendation {
 			action: "needs_user_review",
 			selected: false,
 			reason: "Proposed items need user review before cleanup.",
-			riskLevel: "medium",
+			riskLevel: "medium risk",
 			requiresExplicitConfirmation: true,
 			source: "local",
 		};
@@ -280,7 +280,7 @@ function recommendCleanupForItem(item: BoardItem): CleanupRecommendation {
 			action: "archive",
 			selected: true,
 			reason: "Looks historical: completed implementation or review-log entry.",
-			riskLevel: "low",
+			riskLevel: "low risk",
 			requiresExplicitConfirmation: false,
 			source: "local",
 		};
@@ -290,7 +290,7 @@ function recommendCleanupForItem(item: BoardItem): CleanupRecommendation {
 		action: "keep",
 		selected: false,
 		reason: "No safe cleanup heuristic matched; keep by default.",
-		riskLevel: "low",
+		riskLevel: "low risk",
 		requiresExplicitConfirmation: false,
 		source: "local",
 	};
@@ -315,7 +315,7 @@ function isCleanupAction(value: unknown): value is CleanupAction {
 }
 
 function isCleanupRiskLevel(value: unknown): value is CleanupRiskLevel {
-	return value === "low" || value === "medium" || value === "high";
+	return value === "low risk" || value === "medium risk" || value === "high risk";
 }
 
 function isCleanupConfidence(value: unknown): value is CleanupConfidence {
@@ -605,7 +605,7 @@ function formatBoardCleanupSubagentPrompt(board: BoardState): string {
 				action: "archive|supersede|keep|needs_user_review",
 				replacementText: "optional for supersede",
 				confidence: "low|medium|high",
-				riskLevel: "low|medium|high",
+				riskLevel: "low risk|medium risk|high risk",
 				requiresExplicitConfirmation: true,
 				reason: "evidence-backed reason",
 				evidence: ["source or observation"],
@@ -1295,7 +1295,7 @@ class BoardCleanupComponent {
 	render(width: number): string[] {
 		if (this.cachedLines && this.cachedWidth === width) return this.cachedLines;
 		const helpLine = truncateToWidth(this.theme.fg("dim", "↑↓/j/k select • space toggle • enter apply selected • q/esc cancel"), width);
-		const riskLegend = truncateToWidth(this.theme.fg("dim", "risk: low=safe cleanup • medium=needs judgment • high=likely current context"), width);
+		const riskLegend = truncateToWidth(this.theme.fg("dim", "risk: low risk=safe cleanup • medium risk=needs judgment • high risk=likely current context"), width);
 		const lines = [
 			this.header(width),
 			truncateToWidth(this.summaryLine(), width),

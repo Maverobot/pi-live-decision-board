@@ -53,7 +53,7 @@
 - [X] Why do we need decisions in the board? Maybe we just need "Goals, Assumptions"? Decisions are getting more and more, so hard to manage.
 - [X] One subagent for the board cleanup is enough, don't need multiple subagents.
 - [X] What does low, medium etc mean in the board cleanup?
-- [ ] Rename them to low risk, medium risk and high risk for clarity.
+- [X] Rename them to low risk, medium risk and high risk for clarity.
 - [ ] Make the repo availabe on https://pi.dev/packages
 - [ ] Provide tools to remove item from the board so that the agent can remote deprecated items automatically. The ideal is that the user should seldom need to run /board-cleanup(-subagent) manually.
 - [ ] Add a changelog file to keep track of the changelog. Ideally the changelog can be infered from the git commit messages.

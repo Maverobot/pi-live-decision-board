@@ -406,7 +406,7 @@ Historical/deferred command-shape notes:
       "proposedStatus": "rejected",
       "proposedStrength": "soft",
       "confidence": "high",
-      "riskLevel": "low",
+      "riskLevel": "low risk",
       "requiresExplicitConfirmation": false,
       "reason": "Completed review-fix batch; durable details are in commits/tests.",
       "evidence": ["Commit/test history documents this work."]
@@ -420,7 +420,7 @@ Historical/deferred command-shape notes:
       "action": "supersede",
       "replacementText": "Use keyboard-first board management; do not pursue mouse-only editing unless Pi TUI documents mouse support.",
       "confidence": "medium",
-      "riskLevel": "medium",
+      "riskLevel": "medium risk",
       "requiresExplicitConfirmation": true,
       "reason": "Original text was time-bound; replacement preserves the current principle."
     }
@@ -437,9 +437,9 @@ Supported actions should be intentionally small at first:
 
 Risk levels estimate the chance that a recommendation would remove or rewrite still-useful current context:
 
-- low: obvious historical clutter or safe no-op recommendation
-- medium: needs human judgment; a principle may remain but wording/action may need change
-- high: likely current-context impact, accepted constraints, or ambiguous user intent
+- low risk: obvious historical clutter or safe no-op recommendation
+- medium risk: needs human judgment; a principle may remain but wording/action may need change
+- high risk: likely current-context impact, accepted constraints, or ambiguous user intent
 
 Confidence is separate from risk: confidence records evidence strength for the recommendation; risk records potential harm if the recommendation is wrong.
 

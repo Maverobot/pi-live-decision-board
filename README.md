@@ -117,9 +117,9 @@ Use `/board-cleanup` to review active items and archive obvious historical entri
 
 Cleanup risk levels estimate the chance that applying a recommendation would remove or rewrite still-useful current context:
 
-- `low`: obvious historical clutter or a safe no-op recommendation.
-- `medium`: needs human judgment, usually because a useful principle may remain but wording/action might change.
-- `high`: likely to affect current context, accepted constraints, or ambiguous user intent.
+- `low risk`: obvious historical clutter or a safe no-op recommendation.
+- `medium risk`: needs human judgment, usually because a useful principle may remain but wording/action might change.
+- `high risk`: likely to affect current context, accepted constraints, or ambiguous user intent.
 
 Imported recommendations may also include confidence. Confidence is evidence strength (`low`/`medium`/`high`) for the recommendation itself; risk is the potential harm if the recommendation is wrong.
 
