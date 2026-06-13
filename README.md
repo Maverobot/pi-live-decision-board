@@ -7,6 +7,12 @@ The board is visible while the agent works, editable by the user, writable by th
 ## Install
 
 ```bash
+pi install npm:pi-live-decision-board
+```
+
+Or install directly from GitHub:
+
+```bash
 pi install git:github.com/Maverobot/pi-live-decision-board
 ```
 
