@@ -29,6 +29,7 @@ Entries are inferred from conventional git commit messages. Regenerate with `npm
 
 ### Fixed
 
+- harden archive-only board workflows (a7317b7)
 - clarify cleanup risk labels (abc5bdf)
 - toggle selected board cleanup recommendation with space (7858491)
 - harden cleanup recommendation imports (ef7dccc)
