@@ -564,7 +564,7 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 	const cleanupEvents = new Map();
 	const cleanupEntries = [];
 	const cleanupRendered = [];
-	const cleanupKeys = ["j", "k", " ", "q"];
+	const cleanupKeys = ["j", "k", "\x1b[32u", "q"];
 	let cleanupResult;
 	const testTheme = { fg: (_color, text) => text };
 	const cleanupCtx = {
@@ -634,7 +634,7 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 	assert.match(cleanupInitialTop, /risk: low=safe cleanup/i, "cleanup UI should define risk levels before long recommendation lists can push lower content out of the overlay");
 	assert(cleanupRendered[0].indexOf("[D3]") < cleanupRendered[0].indexOf("[D10]"), "cleanup preserves numeric board order within action groups");
 	assert.notEqual(cleanupRendered[1], cleanupRendered[0], "j changes selection");
-	assert.notEqual(cleanupRendered[3], cleanupRendered[2], "space toggles selected action");
+	assert.notEqual(cleanupRendered[3], cleanupRendered[2], "Space key CSI-u input toggles selected action");
 	assert.equal(cleanupResult.type, "cancel");
 }
 
@@ -677,6 +677,66 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 	const entriesBeforeCleanup = cleanupEntries.length;
 	await cleanupCommands.get("board-cleanup").handler("", cleanupCtx);
 	assert.equal(cleanupEntries.length, entriesBeforeCleanup, "cleanup cancel should persist nothing");
+}
+
+{
+	const cleanupCommands = new Map();
+	const cleanupEvents = new Map();
+	const cleanupEntries = [];
+	const cleanupRendered = [];
+	let confirmCalled = false;
+	const cleanupCtx = {
+		mode: "tui",
+		hasUI: true,
+		isIdle: () => true,
+		sessionManager: { getBranch: () => [] },
+		ui: {
+			theme: { fg: (_color, text) => text },
+			setStatus: () => {},
+			setWidget: () => {},
+			notify: () => {},
+			confirm: async () => {
+				confirmCalled = true;
+				return true;
+			},
+			editor: async (_title, initial) => initial,
+			custom: async (factory) => {
+				let result;
+				const component = factory({ requestRender: () => {} }, { fg: (_color, text) => text }, {}, (value) => {
+					result = value;
+				});
+				cleanupRendered.push(component.render(120).join("\n"));
+				component.handleInput("\x1b[32u");
+				cleanupRendered.push(component.render(120).join("\n"));
+				component.handleInput("\r");
+				return result;
+			},
+		},
+	};
+
+	extension({
+		on(eventName, callback) {
+			cleanupEvents.set(eventName, callback);
+		},
+		registerCommand(name, def) {
+			cleanupCommands.set(name, def);
+		},
+		registerTool() {},
+		appendEntry(customType, data) {
+			cleanupEntries.push({ type: "custom", customType, data });
+		},
+		sendMessage() {},
+	});
+
+	await cleanupEvents.get("session_start")({}, cleanupCtx);
+	await cleanupCommands.get("decide").handler("Core implementation constraint", cleanupCtx);
+	const entriesBeforeCleanup = cleanupEntries.length;
+	await cleanupCommands.get("board-cleanup").handler("", cleanupCtx);
+	assert.match(cleanupRendered[0], /\[ \]\s*\[D1\] accepted Keep/i, "keep recommendations start unselected");
+	assert.match(cleanupRendered[1], /\[x\]\s*\[D1\] accepted Archive from active board/i, "Space marks keep recommendations as manual archive overrides");
+	assert.equal(confirmCalled, true, "manual archive override opens cleanup confirmation");
+	assert.equal(cleanupEntries.length, entriesBeforeCleanup + 1, "manual archive override persists cleanup");
+	assert.equal(cleanupEntries.at(-1).data.items.find((item) => item.id === "D1")?.status, "rejected");
 }
 
 {

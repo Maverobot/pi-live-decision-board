@@ -1245,6 +1245,7 @@ class BoardManagerComponent {
 
 class BoardCleanupComponent {
 	private readonly recommendations: CleanupRecommendation[];
+	private readonly originalActions: Map<string, CleanupAction>;
 	private selectedIndex = 0;
 	private cachedWidth?: number;
 	private cachedLines?: string[];
@@ -1263,6 +1264,7 @@ class BoardCleanupComponent {
 				return left.index - right.index;
 			})
 			.map(({ recommendation }) => recommendation);
+		this.originalActions = new Map(this.recommendations.map((recommendation) => [recommendation.id, recommendation.action]));
 	}
 
 	handleInput(data: string): void {
@@ -1280,7 +1282,7 @@ class BoardCleanupComponent {
 			return;
 		}
 
-		if (data === " ") {
+		if (matchesKey(data, Key.space)) {
 			this.toggleSelection();
 			return;
 		}
@@ -1348,17 +1350,28 @@ class BoardCleanupComponent {
 	private toggleSelection(): void {
 		const recommendation = this.recommendations[this.selectedIndex];
 		if (!recommendation) return;
-		if (!this.canToggle(recommendation)) return;
-		recommendation.selected = !recommendation.selected;
+		if (recommendation.selected) {
+			recommendation.selected = false;
+			this.restoreManualArchiveOverride(recommendation);
+		} else {
+			recommendation.selected = true;
+			this.applyManualArchiveOverride(recommendation);
+		}
 		this.invalidate();
 		this.requestRender();
 	}
 
-	private canToggle(recommendation: CleanupRecommendation): boolean {
-		if (recommendation.source === "imported") {
-			return recommendation.action === "archive" || recommendation.action === "supersede";
+	private applyManualArchiveOverride(recommendation: CleanupRecommendation): void {
+		if (recommendation.action === "keep" || recommendation.action === "needs_user_review") {
+			recommendation.action = "archive";
 		}
-		return (recommendation.action === "archive" || recommendation.action === "supersede") && recommendation.riskLevel === "low" && !recommendation.requiresExplicitConfirmation;
+	}
+
+	private restoreManualArchiveOverride(recommendation: CleanupRecommendation): void {
+		const originalAction = this.originalActions.get(recommendation.id);
+		if (originalAction && recommendation.action === "archive") {
+			recommendation.action = originalAction;
+		}
 	}
 
 	private renderRecommendation(recommendation: CleanupRecommendation, index: number, width: number): { main: string; reason: string } {

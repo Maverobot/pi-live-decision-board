@@ -65,6 +65,7 @@ Prompt guidance tells the model to keep one current goal plus assumptions and de
 - The widget shows a compact summary followed by indented Goal, Decisions, and Assumptions sections with all active items by default; `/board-toggle` collapses the body while keeping the summary line visible. Footer status and titled separator lines are intentionally suppressed to avoid duplicate or noisy board chrome.
 - `/board-snapshot` records the active context view (accepted/proposed items plus board rules) as a visible message.
 - `/board-manage` is the primary TUI mutation UI for existing board items: `↑↓/j/k` select, `enter/e` edit, `a` accept, `r` reject/remove from the active board, `u` supersede, `c` clear, `q/esc` close. Edit rewrites the selected item text in place; supersede retires the selected item and creates a linked accepted replacement.
+- `/board-cleanup` lets users manually select any active item for archive: `space` toggles the selected row, and toggling a keep/review row marks it as an archive override before `enter` opens the confirmation.
 - Item-targeted slash commands remain available as compatibility/power-user fallbacks for users who want to act by id, but the keyboard manager is the preferred workflow.
 - The `context` hook removes stale board-generated context and injects exactly one fresh board snapshot into provider requests.
 - User/discussion-loop edits while the agent is busy queue a steering message so the next model turn sees the updated board.
