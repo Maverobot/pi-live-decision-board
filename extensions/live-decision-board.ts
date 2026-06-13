@@ -656,6 +656,31 @@ function formatPromptItem(item: BoardItem): string {
 	return `- ${item.id}: ${item.text} [${item.status}, source:${item.source}, v${item.version}]`;
 }
 
+export function formatBoardHistory(board: BoardState): string {
+	const active = board.items.filter(isActiveItem);
+	const inactive = board.items.filter((item) => !isActiveItem(item));
+	const lines = ["# Live Decision Board History", "", formatBoardStatus(board), ""];
+	appendHistorySection(lines, "Active items", active);
+	lines.push("");
+	appendHistorySection(lines, "Inactive history", inactive);
+	return lines.join("\n");
+}
+
+function appendHistorySection(lines: string[], label: string, items: BoardItem[]): void {
+	lines.push(`${label}:`);
+	if (items.length === 0) {
+		lines.push("- none");
+		return;
+	}
+	lines.push(...items.map(formatHistoryItem));
+}
+
+function formatHistoryItem(item: BoardItem): string {
+	const supersedes = item.supersedes ? `, supersedes:${item.supersedes}` : "";
+	const status = item.status === "rejected" ? "archived" : item.status;
+	return `- [${item.id}] ${item.text} [${item.kind}, ${status}, source:${item.source}, v${item.version}${supersedes}]`;
+}
+
 export function formatBoardStatus(board: BoardState): string {
 	const active = activeBoardItems(board);
 	const goals = active.filter((item) => item.kind === "goal").length;
@@ -1147,7 +1172,7 @@ function getCustomType(message: unknown): string {
 type BoardManagerAction =
 	| { type: "close" }
 	| { type: "clear" }
-	| { type: "edit" | "accept" | "reject" | "supersede"; id: string };
+	| { type: "edit" | "accept" | "archive" | "supersede"; id: string };
 
 type CleanupReviewResult = { type: "cancel" } | { type: "apply"; recommendations: CleanupRecommendation[] };
 
@@ -1197,7 +1222,7 @@ class BoardManagerComponent {
 		if (!selected) return;
 		if (matchesKey(data, Key.enter) || data === "e") this.done({ type: "edit", id: selected.id });
 		else if (data === "a") this.done({ type: "accept", id: selected.id });
-		else if (data === "r") this.done({ type: "reject", id: selected.id });
+		else if (data === "r") this.done({ type: "archive", id: selected.id });
 		else if (data === "u") this.done({ type: "supersede", id: selected.id });
 	}
 
@@ -1221,8 +1246,8 @@ class BoardManagerComponent {
 
 		lines.push(
 			"",
-			truncateToWidth(this.theme.fg("dim", "↑↓/j/k select • enter/e edit • a accept • r reject/remove • u supersede • c clear • q/esc close"), width),
-			truncateToWidth(this.theme.fg("dim", "edit rewrites item text • supersede creates a linked replacement"), width),
+			truncateToWidth(this.theme.fg("dim", "↑↓/j/k select • enter/e edit • a accept • r archive • u supersede • c clear • q/esc close"), width),
+			truncateToWidth(this.theme.fg("dim", "edit rewrites item text • archive keeps history • supersede creates a linked replacement"), width),
 		);
 		this.cachedWidth = width;
 		this.cachedLines = lines;
@@ -1244,7 +1269,7 @@ class BoardManagerComponent {
 		const marker = selected ? this.theme.fg("accent", ">") : " ";
 		const id = this.theme.fg("accent", `[${item.id}]`);
 		const statusColor = item.status === "accepted" ? "success" : item.status === "proposed" ? "warning" : "dim";
-		const status = this.theme.fg(statusColor, item.status);
+		const status = this.theme.fg(statusColor, item.status === "rejected" ? "archived" : item.status);
 		const text = isActiveItem(item) ? this.theme.fg("muted", item.text) : this.theme.fg("dim", item.text);
 		return truncateToWidth(`${marker} ${id} ${status} ${text}`, width);
 	}
@@ -1507,6 +1532,19 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 		});
 	}
 
+	function showBoardHistory(): void {
+		pi.sendMessage({
+			customType: VISIBLE_CUSTOM_TYPE,
+			content: formatBoardHistory(board),
+			display: true,
+			details: {
+				boardVersion: board.version,
+				activeItemCount: activeBoardItems(board).length,
+				inactiveItemCount: board.items.filter((item) => !isActiveItem(item)).length,
+			},
+		});
+	}
+
 	function boardContextForSession() {
 		return {
 			customType: CONTEXT_CUSTOM_TYPE,
@@ -1576,8 +1614,8 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 			case "accept":
 				safeApplyBoard(ctx, "Accepted item", () => updateBoardItem(board, item.id, { status: "accepted" }));
 				return;
-			case "reject":
-				safeApplyBoard(ctx, "Rejected item", () => updateBoardItem(board, item.id, { status: "rejected" }));
+			case "archive":
+				safeApplyBoard(ctx, "Archived item", () => updateBoardItem(board, item.id, { status: "rejected" }));
 				return;
 		}
 	}
@@ -1692,6 +1730,11 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 		handler: async (_args, _ctx) => showBoard(),
 	});
 
+	pi.registerCommand("board-history", {
+		description: "Show active and inactive archived/superseded board history as a visible message",
+		handler: async (_args, _ctx) => showBoardHistory(),
+	});
+
 	pi.registerCommand("board-toggle", {
 		description: "Collapse or expand the persistent live goal/assumptions/decisions board widget body",
 		handler: async (_args, ctx) => {
@@ -1707,7 +1750,7 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 	});
 
 	pi.registerCommand("board-manage", {
-		description: "Primary UI for live board item actions: edit, accept/reject, supersede, or clear",
+		description: "Primary UI for live board item actions: edit, accept/archive, supersede, or clear",
 		handler: async (_args, ctx) => {
 			if (ctx.mode !== "tui") return ctx.ui.notify("/board-manage requires TUI mode", "error");
 			await manageBoard(ctx);
@@ -1782,10 +1825,21 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 		},
 	});
 
-	pi.registerCommand("board-reject", {
-		description: "Power-user fallback: reject a board item by id; prefer /board-manage",
+	function archiveBoardById(args: string, ctx: ExtensionContext): boolean {
+		return safeApplyBoard(ctx, "Archived item", () => updateBoardItem(board, args.trim(), { status: "rejected" }));
+	}
+
+	pi.registerCommand("board-archive", {
+		description: "Power-user fallback: archive a board item by id; prefer /board-manage",
 		handler: async (args, ctx) => {
-			safeApplyBoard(ctx, "Rejected item", () => updateBoardItem(board, args.trim(), { status: "rejected" }));
+			archiveBoardById(args, ctx);
+		},
+	});
+
+	pi.registerCommand("board-reject", {
+		description: "Deprecated compatibility alias: archive a board item by id; prefer /board-archive or /board-manage",
+		handler: async (args, ctx) => {
+			archiveBoardById(args, ctx);
 		},
 	});
 
@@ -1842,12 +1896,12 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 			"Use decision_board as a current-context contract, not as an implementation log for progress updates, tests run, files changed, or completed review batches.",
 			"Use a single read-only recommendation subagent for future board cleanup runs; do not launch multiple parallel board-cleanup recommendation subagents unless explicitly requested.",
 			"After /board-cleanup-subagent recommendations are prepared, call decision_board.review_cleanup with the recommendation objects for interactive review.",
-			"Use decision_board archive/remove only for routine deprecated or stale active items after listing the current board; include the observed itemVersion and a reason, and prefer review_cleanup when current-context impact is ambiguous.",
+			"Use decision_board archive only for routine deprecated or stale active items after listing the current board; include the observed itemVersion and a reason, and prefer review_cleanup when current-context impact is ambiguous.",
 			"Avoid using ask_user for subagent recommendations; invoke review_cleanup and let that workflow handle interactive confirmation before mutation.",
 		],
 		executionMode: "sequential",
 		parameters: Type.Object({
-			action: StringEnum(["list", "add", "update", "set_status", "set_strength", "supersede", "archive", "remove", "review_cleanup"] as const),
+			action: StringEnum(["list", "add", "update", "set_status", "set_strength", "supersede", "archive", "review_cleanup"] as const),
 			id: Type.Optional(Type.String()),
 			kind: Type.Optional(StringEnum(["goal", "assumption", "decision"] as const)),
 			text: Type.Optional(Type.String()),
@@ -1921,7 +1975,7 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 			const targetId = params.id?.trim();
 			if (!targetId) throw new Error(`decision_board ${params.action} requires id`);
 
-			if (params.action === "archive" || params.action === "remove") {
+			if (params.action === "archive") {
 				const reason = params.reason?.trim();
 				if (!reason) throw new Error("decision_board archive requires reason explaining why the item is deprecated or stale");
 				if (typeof params.itemVersion !== "number") throw new Error("decision_board archive requires itemVersion from the current board listing");

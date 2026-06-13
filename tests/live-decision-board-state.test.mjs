@@ -213,6 +213,12 @@ const cleanedBoard = mod.applyBoardCleanup(cleanupBoard, archivePlan);
 assert.equal(cleanedBoard.items.find((item) => item.id === "D1").status, "rejected", "archive maps to inactive retained status");
 assert.equal(cleanedBoard.items.find((item) => item.id === "D2").strength, "hard", "cleanup preserves hard item strength");
 assert.equal(mod.formatBoardForPrompt(cleanedBoard).includes("Apply Round 5"), false, "archived item leaves active prompt context");
+const boardHistory = mod.formatBoardHistory(cleanedBoard);
+assert.match(boardHistory, /Live Decision Board History/);
+assert.match(boardHistory, /Active items:/);
+assert.match(boardHistory, /Inactive history:/);
+assert.match(boardHistory, /\[D1\].*Apply Round 5.*archived/, "board history exposes archived items with archive terminology");
+assert.match(boardHistory, /\[D2\].*Use keyboard-first board management.*accepted/, "board history includes active items for context");
 
 const directArchiveBoard = mod.archiveBoardItem(cleanupBoard, "D2", cleanupD2.itemVersion);
 assert.equal(directArchiveBoard.items.find((item) => item.id === "D2").status, "rejected", "direct archive maps to inactive retained status");
@@ -257,6 +263,7 @@ assert.equal(unchangedBySameStrength.version, withDecision.version, "same-value 
 
 const superseded = mod.supersedeBoardItem(withDecision, "D1", "Build extension MVP first");
 assert.equal(superseded.items.find((item) => item.id === "D1").status, "superseded");
+assert.match(mod.formatBoardHistory(superseded), /\[D1\].*superseded/, "board history exposes superseded items");
 assert.equal(superseded.items.at(-1).supersedes, "D1");
 assert.equal(superseded.items.at(-1).id, "D2");
 

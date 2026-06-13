@@ -84,7 +84,7 @@ The board now treats `accepted` items as enforced context; `proposed` items are 
 | Accepted | User/model has committed to treating this as current | Included and enforced |
 | Proposed | Candidate item needing review, but still visible as current uncertainty | Included in context |
 | Compatibility strength | Legacy `soft`/`hard` field in existing markdown/state payloads | Ignored for enforcement |
-| Archived | User-facing verb for removing a once-useful item from active context without saying it was false | Should map to an inactive retained state |
+| Archived | User-facing verb for removing a once-useful item from active context without saying it was false | Maps to an inactive retained state visible via =/board-history= |
 | Rejected | Item is wrong, unwanted, or no longer valid | Retained but inactive |
 | Superseded | Item was replaced by clearer/current text | Retained but inactive; replacement active |
 | Documented | Product fact belongs in README/design docs, not active board | Docs become source of truth |
@@ -136,6 +136,7 @@ Prefer updating or superseding existing entries over adding a new duplicate.
 
 ** End of task: close the loop
 - Archive implementation-log entries; direct agent archive is appropriate for clearly deprecated items when using current itemVersion + reason.
+- Use =/board-history= when retained inactive items need to be inspected.
 - Supersede temporary decisions into evergreen rules when still useful.
 - Move shipped behavior into README/design docs.
 - Avoid adding an active board item saying cleanup happened.

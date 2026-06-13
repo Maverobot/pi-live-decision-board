@@ -57,6 +57,7 @@ extension({
 for (const name of [
 	"board",
 	"board-snapshot",
+	"board-history",
 	"board-toggle",
 	"board-manage",
 	"board-cleanup",
@@ -66,6 +67,7 @@ for (const name of [
 	"decide",
 	"board-hard",
 	"board-soft",
+	"board-archive",
 	"board-reject",
 	"board-accept",
 	"board-supersede",
@@ -75,6 +77,7 @@ for (const name of [
 }
 assert.equal(commands.has("board-show"), false, "board-show should be renamed to board-snapshot");
 assert.match(commands.get("board-snapshot").description, /active context snapshot/, "board-snapshot should describe the active context view it records");
+assert.match(commands.get("board-history").description, /inactive|history|archived/i, "board-history should describe inactive board history");
 assert.match(commands.get("assume").description, /accepted assumption/i, "assume command should use accepted-item wording");
 assert.doesNotMatch(commands.get("assume").description, /soft|hard/i, "assume command should not expose legacy strength wording");
 assert.match(commands.get("decide").description, /accepted decision/i, "decide command should use accepted-item wording");
@@ -84,8 +87,10 @@ assert.match(commands.get("board-manage").description, /\bclear\b/i, "board-mana
 assert.match(commands.get("board-cleanup-subagent").description, /subagent/i, "board-cleanup-subagent should mention subagent assistance");
 assert.match(commands.get("board-cleanup-subagent").description, /recommend/i, "board-cleanup-subagent should mention recommendations");
 assert(messageRenderers.has("live-decision-board-cleanup-subagent-handoff"), "board-cleanup-subagent should register a folded custom message renderer");
-assert.match(commands.get("board-reject").description, /fallback/i, "board-reject should be documented as a fallback command");
-assert.match(commands.get("board-reject").description, /prefer\s+\/board-manage/i, "board-reject should prefer board-manage");
+assert.match(commands.get("board-archive").description, /fallback/i, "board-archive should be documented as a fallback command");
+assert.match(commands.get("board-archive").description, /prefer\s+\/board-manage/i, "board-archive should prefer board-manage");
+assert.match(commands.get("board-reject").description, /deprecated/i, "board-reject should be documented as deprecated compatibility");
+assert.match(commands.get("board-reject").description, /archive/i, "board-reject should point users to archive terminology");
 assert.match(commands.get("board-accept").description, /fallback/i, "board-accept should be documented as a fallback command");
 assert.match(commands.get("board-accept").description, /prefer\s+\/board-manage/i, "board-accept should prefer board-manage");
 assert.match(commands.get("board-supersede").description, /fallback/i, "board-supersede should be documented as a fallback command");
@@ -164,6 +169,10 @@ assert.match(widgetText, /\[A1\]/, "assume command updates widget with a bracket
 assert.match(widgetText, /\[D1\]/, "decide command updates widget with a bracketed key");
 assert.equal(latestStatus, undefined, "board summary should not be duplicated in the footer status");
 assert.match(latestMessage.content, /Build as a Pi extension first/);
+await commands.get("board-history").handler("", ctx);
+assert.match(latestMessage.content, /Live Decision Board History/);
+assert.match(latestMessage.content, /Active items:/);
+assert.match(latestMessage.content, /Backend uses Node 22/, "board-history includes active assumptions");
 const entriesBeforeToggle = entries.length;
 await commands.get("board-toggle").handler("", ctx);
 assert.doesNotMatch(latestNotificationMessage, /hard decisions/i, "collapse notification should use accepted-item enforcement wording");
@@ -179,8 +188,11 @@ assert.match(renderLatestWidgetText(), /Decisions.*\(1\)/, "board-toggle expands
 assert.equal(entries.length, entriesBeforeToggle, "expanding the widget also does not persist board state changes");
 const initialBoard = entries.at(-1).data;
 
-await commands.get("board-reject").handler("A1", ctx);
+await commands.get("board-archive").handler("A1", ctx);
 assert.equal(entries.at(-1).data.items.find((item) => item.id === "A1").status, "rejected");
+await commands.get("board-history").handler("", ctx);
+assert.match(latestMessage.content, /Inactive history:/);
+assert.match(latestMessage.content, /\[A1\].*Backend uses Node 22.*archived/, "board-history exposes archived items with archive terminology");
 await commands.get("board-accept").handler("A1", ctx);
 assert.equal(entries.at(-1).data.items.find((item) => item.id === "A1").status, "accepted");
 const acceptedBoardForRestore = entries.at(-1).data;
@@ -413,7 +425,7 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 	assert.equal(typeof d1?.version, "number");
 	const toolSchema = JSON.stringify(localTool.parameters);
 	assert(toolSchema.includes('"archive"'), "decision_board schema should expose direct archive action");
-	assert(toolSchema.includes('"remove"'), "decision_board schema should expose remove alias");
+	assert(!toolSchema.includes('"remove"'), "decision_board schema should not expose remove alias");
 	assert(toolSchema.includes("itemVersion"), "decision_board archive action should accept an itemVersion freshness guard");
 	assert(toolSchema.includes("reason"), "decision_board archive action should accept a reason");
 
@@ -441,18 +453,18 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 	assert.doesNotMatch(archiveResult.details.boardContext, /Completed implementation detail/, "direct archived item leaves active prompt context");
 	const beforeNoOp = localEntries.length;
 	await assert.rejects(
-		() => localTool.execute("remove-inactive-stale", { action: "remove", id: "D1", itemVersion: d1.version, reason: "Already archived" }, undefined, undefined, localCtx),
+		() => localTool.execute("archive-inactive-stale", { action: "archive", id: "D1", itemVersion: d1.version, reason: "Already archived" }, undefined, undefined, localCtx),
 		/changed since it was observed/,
-		"remove alias still rejects stale item versions for inactive items",
+		"direct archive still rejects stale item versions for inactive items",
 	);
 	const noChangeResult = await localTool.execute(
-		"remove-inactive",
-		{ action: "remove", id: "D1", itemVersion: archivedD1.version, reason: "Already archived" },
+		"archive-inactive",
+		{ action: "archive", id: "D1", itemVersion: archivedD1.version, reason: "Already archived" },
 		undefined,
 		undefined,
 		localCtx,
 	);
-	assert.equal(localEntries.length, beforeNoOp, "remove alias is a no-op for inactive items");
+	assert.equal(localEntries.length, beforeNoOp, "direct archive is a no-op for inactive items");
 	assert.match(noChangeResult.content[0].text, /already inactive/i);
 }
 

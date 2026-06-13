@@ -35,6 +35,7 @@ pi -e .
 | `/board-cleanup` | Review active board items and archive obvious historical entries after confirmation |
 | `/board-cleanup-subagent` | Start or queue a folded handoff for read-only subagent-assisted cleanup recommendations; apply remains user-confirmed |
 | `/board-snapshot` | Show the active board context snapshot as a visible message |
+| `/board-history` | Show active plus inactive archived/superseded board history as a visible message |
 | `/board-toggle` | Collapse or expand the persistent board body while keeping the summary line visible |
 
 ### Power-user / compatibility commands
@@ -42,12 +43,13 @@ pi -e .
 | Command | Purpose |
 | --- | --- |
 | `/board` | Power-user editor for the live board markdown |
-| `/board-reject <id>` | Power-user fallback to reject an item by id; prefer `/board-manage` |
-| `/board-accept <id>` | Power-user fallback to accept a proposed or rejected item by id; prefer `/board-manage` |
+| `/board-archive <id>` | Power-user fallback to archive an item by id; prefer `/board-manage` |
+| `/board-accept <id>` | Power-user fallback to accept a proposed or archived item by id; prefer `/board-manage` |
 | `/board-supersede <id> <new text>` | Power-user fallback to supersede an item by id; prefer `/board-manage` |
 | `/board-clear` | Power-user fallback to clear the board after confirmation; prefer `/board-manage` |
 | `/board-hard <id>` | Deprecated compatibility no-op: accepted-item enforcement now replaces hard/soft commands |
 | `/board-soft <id>` | Deprecated compatibility no-op: accepted-item enforcement now replaces hard/soft commands |
+| `/board-reject <id>` | Deprecated compatibility alias for `/board-archive <id>` |
 
 ## Agent tool
 
@@ -59,10 +61,10 @@ The extension registers a `decision_board` tool with actions:
 - `set_status`
 - `set_strength` (compatibility no-op; accepted/proposed status controls enforcement)
 - `supersede`
-- `archive` / `remove`
+- `archive`
 - `review_cleanup`
 
-`archive`/`remove` lets the current agent directly remove a routine deprecated or stale active item from active context while retaining it in board history. It requires the item id, the observed `itemVersion` from the current board listing, and a reason; stale item versions are rejected.
+`archive` lets the current agent directly archive a routine deprecated or stale active item: the item leaves active context but remains retained in board history. It requires the item id, the observed `itemVersion` from the current board listing, and a reason; stale item versions are rejected.
 
 `review_cleanup` accepts subagent recommendations from read-only cleanup helpers and opens the cleanup manager UI for interactive review and confirmation before applying anything.
 
@@ -73,7 +75,8 @@ Prompt guidance tells the model to keep one current goal plus assumptions and de
 - Board state is persisted in Pi session custom entries and restored from the active branch.
 - The widget shows a compact summary followed by indented Goal, Decisions, and Assumptions sections with all active items by default; `/board-toggle` collapses the body while keeping the summary line visible. Footer status and titled separator lines are intentionally suppressed to avoid duplicate or noisy board chrome.
 - `/board-snapshot` records the active context view (accepted/proposed items plus board rules) as a visible message.
-- `/board-manage` is the primary TUI mutation UI for existing board items: `↑↓/j/k` select, `enter/e` edit, `a` accept, `r` reject/remove from the active board, `u` supersede, `c` clear, `q/esc` close. Edit rewrites the selected item text in place; supersede retires the selected item and creates a linked accepted replacement.
+- `/board-history` records a visible board-history view with active items plus inactive archived/superseded items retained after archive, cleanup, or supersede actions.
+- `/board-manage` is the primary TUI mutation UI for existing board items: `↑↓/j/k` select, `enter/e` edit, `a` accept, `r` archive, `u` supersede, `c` clear, `q/esc` close. Edit rewrites the selected item text in place; archive removes the item from active context while retaining history; supersede retires the selected item and creates a linked accepted replacement.
 - `/board-cleanup` lets users manually select any active item for archive: `space` toggles the selected row, and toggling a keep/review row marks it as an archive override before `enter` opens the confirmation.
 - Item-targeted slash commands remain available as compatibility/power-user fallbacks for users who want to act by id, but the keyboard manager is the preferred workflow.
 - The `context` hook removes stale board-generated context and injects exactly one fresh board snapshot into provider requests.
@@ -92,7 +95,7 @@ Prompt guidance tells the model to keep one current goal plus assumptions and de
 - D1 | decision | accepted | hard | Build as a Pi extension first
 ```
 
-Valid statuses: `proposed`, `accepted`, `rejected`, `superseded`.
+Valid statuses: `proposed`, `accepted`, `rejected`, `superseded`. The legacy/internal `rejected` status is used for archived items in persisted markdown.
 
 `strength` is legacy compatibility data (`soft`/`hard`) and is not a product semantic for enforcement.
 
@@ -122,9 +125,9 @@ Bad active board items:
 - "Ran npm test."
 - "Renamed `/board-show` to `/board-snapshot`."
 
-Use `/board-cleanup` to review active items and archive obvious historical entries. Archive removes an item from active context while retaining it in board history.
+Use `/board-cleanup` to review active items and archive obvious historical entries. Archive removes an item from active context while retaining it in board history. Use `/board-history` to inspect retained inactive items.
 
-For routine, clearly deprecated items, the current agent can call `decision_board` with `action: "archive"` (or `"remove"`) after listing the current board. Direct archive requires the current item version and a reason, and should not be used for ambiguous current-context decisions; use `/board-cleanup` or `review_cleanup` instead when judgment is needed.
+For routine, clearly deprecated items, the current agent can call `decision_board` with `action: "archive"` after listing the current board. Direct archive requires the current item version and a reason, and should not be used for ambiguous current-context decisions; use `/board-cleanup` or `review_cleanup` instead when judgment is needed.
 
 Cleanup risk levels estimate the chance that applying a recommendation would remove or rewrite still-useful current context:
 
