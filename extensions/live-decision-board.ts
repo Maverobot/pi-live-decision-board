@@ -58,6 +58,7 @@ const CLEANUP_AUTO_HANDOFF_CUSTOM_TYPE = "live-decision-board-cleanup-auto-hando
 const BOARD_CONTEXT_TYPES = new Set([CONTEXT_CUSTOM_TYPE, VISIBLE_CUSTOM_TYPE, DELTA_CUSTOM_TYPE]);
 
 const ACTIVE_BOARD_NUDGE_LIMIT = 12;
+const BOARD_MUTATION_BATCH_RULE = "Do not batch decision_board mutations with file mutations; mutate the board first, then wait for the next model turn.";
 const BOARD_MUTATION_FRESH_CONTEXT_HINT = "Board changed; wait for the next model turn before mutating files.";
 
 const BOARD_ITEM_STATUSES: BoardStatus[] = ["active", "archived"];
@@ -593,6 +594,7 @@ export function formatBoardForPrompt(board: BoardState): string {
 	lines.push("- Treat every active item as enforced current context before mutating files.");
 	lines.push("- If current work conflicts with this board, reconcile before continuing.");
 	lines.push("- Keep at most one active Goal plus assumptions or decisions that affect future behavior; do not use the board as an implementation log.");
+	lines.push(`- ${BOARD_MUTATION_BATCH_RULE}`);
 	const budgetWarning = boardBudgetWarning(board);
 	if (budgetWarning) lines.push(`- ${budgetWarning}`);
 	lines.push("");
@@ -1826,7 +1828,8 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 		promptGuidelines: [
 			"Use decision_board to record one current goal plus active assumptions or decisions and enforce them as the current contract for this work.",
 			"Use decision_board before acting on a decision that is not already recorded in the live board.",
-						"Use decision_board as a current-context contract, not as an implementation log for progress updates, tests run, files changed, or completed review batches.",
+			"Use decision_board as a current-context contract, not as an implementation log for progress updates, tests run, files changed, or completed review batches.",
+			BOARD_MUTATION_BATCH_RULE,
 			"Use /board-cleanup-auto for main-agent generated cleanup recommendations; do not spawn separate cleanup agents unless the user explicitly requests them.",
 			"After /board-cleanup-auto recommendations are prepared, call decision_board.review_cleanup with the recommendation objects for interactive review.",
 			"Use decision_board update only for same-meaning text corrections after listing the current board; include the observed itemVersion.",

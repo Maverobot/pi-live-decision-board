@@ -114,6 +114,7 @@ assert.doesNotMatch(promptGuidelines, /single read-only recommendation subagent/
 assert.match(promptGuidelines, /review_cleanup/i, "decision_board prompt guidance should mention cleanup recommendation review");
 assert.match(promptGuidelines, /decision_board\.review_cleanup/i, "prompt guidance should direct to review_cleanup action");
 assert.match(promptGuidelines, /archive.*deprecated|deprecated.*archive/i, "prompt guidance should describe direct deprecated-item archiving");
+assert.match(promptGuidelines, /Do not batch decision_board mutations with file mutations/, "prompt guidance should prevent same-turn stale-board blocks");
 assert.doesNotMatch(promptGuidelines, /Ask the user/i, "prompt guidance should not direct ask_user in cleanup workflow");
 assert.doesNotMatch(promptGuidelines, /Use hard only/i, "prompt guidance should not promote hard/soft distinction");
 
