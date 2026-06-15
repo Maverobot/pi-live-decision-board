@@ -151,6 +151,11 @@ assert(overflowWidget.includes("Assumptions (1)"), "visible widget shows non-emp
 assert(overflowWidget.includes("• Assumption visible in counts"), "visible widget shows every active assumption by default");
 assert(!overflowWidget.some((line) => /\[[GAD]\d+]/.test(line)), "primary widget hides item keys by default");
 assert(!overflowWidget.some((line) => line.startsWith("…")), "visible widget does not hide items behind overflow cues by default");
+let crowdedBoard = overflowBoard;
+for (let index = 10; index <= 12; index += 1) {
+	crowdedBoard = mod.addBoardItem(crowdedBoard, { kind: "decision", text: `Decision ${index}` });
+}
+assert.match(mod.formatBoardForPrompt(crowdedBoard), /Board has 13 active items; archive or consolidate before adding more\./, "crowded active boards nudge cleanup before more additions");
 
 let cleanupBoard = mod.createEmptyBoard();
 cleanupBoard = mod.addBoardItem(cleanupBoard, {

@@ -213,6 +213,7 @@ const addResult = await registeredTool.execute(
 	ctx,
 );
 assert.match(addResult.content[0].text, /D2/);
+assert.match(addResult.content[0].text, /wait for the next model turn before mutating files/i, "agent board mutations should warn about stale-context blocks");
 assert.equal(entries.at(-1).data.items.at(-1).strength, "hard");
 const beforeToolNoOp = entries.length;
 const noOpToolResult = await registeredTool.execute(

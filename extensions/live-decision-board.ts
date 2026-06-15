@@ -57,6 +57,9 @@ const DELTA_CUSTOM_TYPE = "live-decision-board-delta";
 const CLEANUP_AUTO_HANDOFF_CUSTOM_TYPE = "live-decision-board-cleanup-auto-handoff";
 const BOARD_CONTEXT_TYPES = new Set([CONTEXT_CUSTOM_TYPE, VISIBLE_CUSTOM_TYPE, DELTA_CUSTOM_TYPE]);
 
+const ACTIVE_BOARD_NUDGE_LIMIT = 12;
+const BOARD_MUTATION_FRESH_CONTEXT_HINT = "Board changed; wait for the next model turn before mutating files.";
+
 const BOARD_ITEM_STATUSES: BoardStatus[] = ["active", "archived"];
 const BOARD_ITEM_STRENGTHS: BoardStrength[] = ["soft", "hard"];
 const BOARD_ITEM_KINDS: BoardKind[] = ["goal", "assumption", "decision"];
@@ -196,6 +199,15 @@ function isActiveItem(item: Pick<BoardItem, "status">): boolean {
 
 function activeBoardItems(board: BoardState): BoardItem[] {
 	return board.items.filter(isActiveItem);
+}
+
+function boardBudgetWarning(board: BoardState): string | undefined {
+	const activeCount = activeBoardItems(board).length;
+	return activeCount > ACTIVE_BOARD_NUDGE_LIMIT ? `Board has ${activeCount} active items; archive or consolidate before adding more.` : undefined;
+}
+
+function formatDecisionBoardToolResult(message: string, board: BoardState, changed = false): string {
+	return [message, boardBudgetWarning(board), changed ? BOARD_MUTATION_FRESH_CONTEXT_HINT : undefined].filter(Boolean).join("\n");
 }
 
 export type CleanupAction = "keep" | "archive" | "needs_user_review";
@@ -581,6 +593,8 @@ export function formatBoardForPrompt(board: BoardState): string {
 	lines.push("- Treat every active item as enforced current context before mutating files.");
 	lines.push("- If current work conflicts with this board, reconcile before continuing.");
 	lines.push("- Keep at most one active Goal plus assumptions or decisions that affect future behavior; do not use the board as an implementation log.");
+	const budgetWarning = boardBudgetWarning(board);
+	if (budgetWarning) lines.push(`- ${budgetWarning}`);
 	lines.push("");
 	lines.push("Goal:");
 	lines.push(...(goals.length ? goals.map(formatPromptItem) : ["- none"]));
@@ -1845,8 +1859,8 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 					source: "agent",
 				});
 				const item = nextBoard.items.at(-1)!;
-				commitBoard(nextBoard, ctx, "agent");
-				return { content: [{ type: "text", text: `Added ${item.id}: ${item.text}` }], details: { board, item } };
+				const result = commitBoard(nextBoard, ctx, "agent");
+				return { content: [{ type: "text", text: formatDecisionBoardToolResult(`Added ${item.id}: ${item.text}`, board, result.changed) }], details: { board, item } };
 			}
 
 			if (params.action === "review_cleanup") {
@@ -1878,9 +1892,9 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 				return {
 					content: [{
 						type: "text",
-						text: `Reviewed ${normalized.recommendations.length} recommendation(s) for cleanup. ${result.changed ? `Applied ${result.appliedRecommendations} action(s).` : "No changes applied."}${
+						text: formatDecisionBoardToolResult(`Reviewed ${normalized.recommendations.length} recommendation(s) for cleanup. ${result.changed ? `Applied ${result.appliedRecommendations} action(s).` : "No changes applied."}${
 							normalized.skipped.length > 0 ? ` ${normalized.skipped.length} skipped.` : ""
-						}`,
+						}`, board, result.changed),
 					}],
 					details: {
 						board,
@@ -1909,7 +1923,7 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 				}
 				const result = commitBoard(nextBoard, ctx, "agent");
 				return {
-					content: [{ type: "text", text: result.changed ? `Archived ${targetId}: ${reason}` : `No change for ${targetId}` }],
+					content: [{ type: "text", text: formatDecisionBoardToolResult(result.changed ? `Archived ${targetId}: ${reason}` : `No change for ${targetId}`, board, result.changed) }],
 					details: { board, item: board.items.find((item) => item.id === targetId), boardContext: formatBoardForPrompt(board) },
 				};
 			}
@@ -1938,7 +1952,7 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 			}
 			const result = commitBoard(nextBoard, ctx, "agent");
 			return {
-				content: [{ type: "text", text: result.changed ? `Updated ${targetId}` : `No change for ${targetId}` }],
+				content: [{ type: "text", text: formatDecisionBoardToolResult(result.changed ? `Updated ${targetId}` : `No change for ${targetId}`, board, result.changed) }],
 				details: { board },
 			};
 		},

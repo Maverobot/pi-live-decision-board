@@ -125,6 +125,8 @@ Bad active board items:
 
 Use `/board-cleanup-manual` to review active items and archive obvious historical entries by hand, or `/board-cleanup-auto` to ask the current agent to prepare recommendations for review. Archive removes an item from active context while retaining it in board history. Clear-active workflows archive all active items instead of deleting history. Use `/board-history` to inspect retained inactive items.
 
+When the board grows beyond 12 active items, prompt/tool output nudges the agent to archive or consolidate before adding more. After an agent board mutation, tool output also reminds the agent to wait for the next model turn before mutating files, avoiding stale-board guard trips.
+
 For routine, clearly deprecated items, the current agent can call `decision_board` with `action: "archive"` after listing the current board. Direct archive requires the current item version and a reason, and should not be used for ambiguous current-context decisions; use `/board-cleanup-manual`, `/board-cleanup-auto`, or `review_cleanup` instead when judgment is needed.
 
 Cleanup risk levels estimate the chance that applying a recommendation would archive still-useful current context:
