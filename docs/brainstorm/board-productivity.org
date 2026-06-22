@@ -159,7 +159,7 @@ Ship the smallest workflow that reduces noise without adding too much machinery.
   - use active/archived status intentionally instead of legacy hard/soft language.
 - Add examples of good vs bad board items.
 
-** Stage 2: manual/local =/board-cleanup-manual=
+** Stage 2: manual/local =/board-cleanup=
 A TUI-only command that uses local heuristics and user confirmation.
 
 MVP behavior:
@@ -187,17 +187,8 @@ MVP non-goals:
 - Optional =/board-history= for inactive items.
 - Inactive/archive count in the summary when useful.
 
-** Stage 4: main-agent auto cleanup
-Main-agent cleanup recommendations are the target advanced workflow after manual cleanup proves the action vocabulary and confirmation UX.
-
-Why defer as MVP:
-
-- Fully automatic cleanup can feel surprising even when every mutation remains confirmed.
-- Cleanup recommendations can become stale while the current agent reasons about them.
-- Model-generated cleanup needs strict validation and user trust.
-- Spawning a separate recommendation subagent adds too much context and startup overhead for routine board hygiene.
-
-When implemented, auto cleanup should use the current agent directly and then open the same confirmation UI as manual cleanup.
+** Stage 4: agent cleanup guidance
+Agents should clean the board at scope/goal changes by directly archiving routine stale items and using `decision_board.review_cleanup` when human judgment is needed.
 
 ** Stage 5: proactive hygiene
 - Suggest cleanup only at natural boundaries.
@@ -333,7 +324,7 @@ Guidance:
 - Keep at most one active Goal. Use it for the current objective; use Assumptions for uncertain/contextual facts; use Decisions for durable choices or constraints that should guide future work.
 - Write evergreen constraint/preference text, not "we implemented..." or "round N fixed...".
 - Do not archive user-owned or active items without explicit user confirmation.
-- If the board is becoming historical/noisy, suggest =/board-cleanup-manual= or =/board-cleanup-auto=; do not add a board item saying cleanup happened.
+- If the board is becoming historical/noisy, archive routine stale items directly or suggest =/board-cleanup= for ambiguous cleanup; do not add a board item saying cleanup happened.
 
 * Local cleanup heuristics
 Local heuristics should be conservative and explainable. The workflow uses only archive, keep, and needs-review recommendations; preserving a still-useful principle is handled by editing same-meaning text or archiving and adding new guidance separately.
@@ -362,20 +353,18 @@ Examples:
 - Archive "After the next review round, start keyboard manager..."; add "Use keyboard-first board management; avoid mouse-only editing unless Pi documents mouse support."
 - Archive multiple historical UI rendering decisions; add one current product rule if needed.
 
-* Main-agent auto cleanup design
-Auto cleanup should recommend, never apply directly. The current agent generates recommendations from the board snapshot, then opens `decision_board.review_cleanup` for freshness validation, interactive review, and confirmation.
+* Agent cleanup design
+Agent cleanup should keep the board current without a separate slash-command handoff. The current agent lists the board, directly archives routine stale items with observed item versions and reasons, and opens `decision_board.review_cleanup` for ambiguous changes.
 
 Implemented command shape:
 
-- =/board-cleanup-auto= — implemented trigger command: the extension snapshots the active board and sends a structured cleanup request to the current Pi agent as a displayed custom handoff message.
-- =/board-cleanup-manual= — manual TUI review flow for users who want to select archive actions by hand.
-
-The auto handoff message is folded by default in the TUI, similar to shell/tool output, and expands with the normal tool-call expansion control to show the full generated prompt. This command does not launch separate agents. The current agent should generate recommendations directly unless the user separately asks for deeper research.
+- =/board-cleanup= — manual TUI review flow for users who want to select archive actions by hand.
 
 Historical/deferred command-shape notes:
 
+- main-agent cleanup slash trigger — removed; the command was awkward compared with normal agent hygiene on scope changes
 - =/board-cleanup-subagent= — removed; subagent overhead is too high for routine cleanup
-- =/board-cleanup --dry-run= — optional deferred alternative for non-queued proposal-only mode
+- =/board-cleanup --dry-run= — optional deferred alternative for proposal-only mode
 
 ** Recommendation schema
 #+begin_src json
@@ -451,15 +440,12 @@ Current manager includes inactive items. A future mode split may reduce clutter:
 - Needs review
 - History/archive
 
-** Resolved: auto cleanup extension invocation
-The extension does not launch model workers or mutate the board directly. Current implementation uses this pattern:
-
-- the extension snapshots board context and sends a structured cleanup request to the current Pi agent as a displayed, folded custom handoff message
-- the current agent generates recommendations directly from that snapshot
-- recommendations are opened for interactive review and confirmation through `decision_board.review_cleanup` with freshness checks by the current agent
+** Resolved: cleanup invocation
+The extension does not launch model workers. Agents clean routine stale items through normal `decision_board archive` calls, and use `decision_board.review_cleanup` for ambiguous recommendations.
 
 Historical/deferred alternatives considered:
 
+- slash-triggered main-agent cleanup handoff, removed because it was awkward for routine cleanup
 - subagent cleanup handoff, removed because context/startup overhead is too high for routine cleanup
 - optional dependency/integration with a subagent extension
 - shell out to Pi/subagent process
@@ -479,9 +465,9 @@ Probably not initially. Merging can lose nuance and should require explicit user
 Implement Board Hygiene in this order:
 
 1. Guidance and docs: make the board's purpose and anti-changelog rules explicit.
-2. Manual/local =/board-cleanup-manual=: conservative classification, review UI, user-confirmed apply.
+2. Manual/local =/board-cleanup=: conservative classification, review UI, user-confirmed apply.
 3. Safety hardening: impact preview, active-item per-item confirmations, stale recommendation validation.
-4. Main-agent =/board-cleanup-auto=: structured recommendations generated by the current agent with the same review/confirmation UI.
+4. Agent cleanup guidance: routine stale-item archives on scope changes, with review UI for ambiguous cleanup.
 5. Passive hygiene prompts after the manual workflow proves useful.
 
 This turns the board from an ever-growing transcript summary into maintained working memory: small, current, trusted, and directly useful for steering the agent.

@@ -79,6 +79,7 @@ assert.match(prompt, /A1: Backend uses Node 22/);
 assert.match(prompt, /D1: Build as a Pi extension first/);
 assert.match(prompt, /Treat every active item as enforced current context before mutating files/);
 assert.match(prompt, /Do not batch decision_board mutations with file mutations/, "prompt warns before same-turn board/file mutation batching");
+assert.match(prompt, /scope or goal changes.*decision_board\.review_cleanup/i, "prompt tells agents to clean stale board items when scope changes");
 assert.doesNotMatch(prompt, /\[(?:proposed|accepted),/i, "prompt does not expose retired status metadata");
 assert.doesNotMatch(prompt, /\bsoft\b|\bhard\b/, "prompt metadata should hide legacy strength labels");
 
