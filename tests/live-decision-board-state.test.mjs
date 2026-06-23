@@ -295,7 +295,7 @@ assert.doesNotMatch(mod.serializeBoardMarkdown(controlTextBoard), /\x1B|\u0007/,
 const tooLongText = "x".repeat(501);
 assert.throws(() => mod.addBoardItem(board, { kind: "decision", text: tooLongText }), /500 characters or fewer/, "board items reject oversized text");
 assert.throws(() => mod.updateBoardItem(withDecision, "D1", { text: tooLongText }), /500 characters or fewer/, "board updates reject oversized text");
-assert.throws(() => mod.parseBoardMarkdown(`# Live Decision Board\n\n- D1 | decision | active | soft | ${tooLongText}\n`, mod.createEmptyBoard()), /500 characters or fewer/, "markdown edits reject oversized text");
+assert.throws(() => mod.parseBoardMarkdown(`# Live Decision Board\n\n- D1 | decision | active | ${tooLongText}\n`, mod.createEmptyBoard()), /500 characters or fewer/, "markdown edits reject oversized text");
 
 const unchangedByUndefined = mod.updateBoardItem(withDecision, "D1", { status: undefined, strength: undefined });
 assert.equal(unchangedByUndefined.version, withDecision.version, "undefined-only patches are no-ops");
@@ -446,25 +446,27 @@ const zeroVersionActiveRestored = mod.restoreBoardFromEntries([
 ]);
 assert.deepEqual(zeroVersionActiveRestored, mod.createEmptyBoard(), "zero-version restored active items are rejected");
 
-const markdownWithActiveStatus = "# Live Decision Board\n\n- D1 | decision | active | hard | Active hard item\n";
+const markdownWithStoredMetadata = "# Live Decision Board\n\n- D1 | decision | active | hard | Active item\n";
 assert.throws(
-	() => mod.parseBoardMarkdown("# Live Decision Board\n\n- D1 | decision | accepted | soft | Old status\n", mod.createEmptyBoard()),
+	() => mod.parseBoardMarkdown("# Live Decision Board\n\n- D1 | decision | accepted | Old status\n", mod.createEmptyBoard()),
 	/Invalid board item status/,
 	"markdown parser rejects removed active-state status values",
 );
 assert.throws(
-	() => mod.parseBoardMarkdown("# Live Decision Board\n\n- D1 | decision | rejected | soft | Old status\n", mod.createEmptyBoard()),
+	() => mod.parseBoardMarkdown("# Live Decision Board\n\n- D1 | decision | rejected | Old status\n", mod.createEmptyBoard()),
 	/Invalid board item status/,
 	"markdown parser rejects removed inactive-state status values",
 );
-const parsedActiveMarkdown = mod.parseBoardMarkdown(markdownWithActiveStatus, mod.createEmptyBoard());
-assert.equal(parsedActiveMarkdown.items[0].strength, "hard", "legacy strength is still parsed for session compatibility");
-assert.equal(mod.hasUninjectedEnforcedChanges(parsedActiveMarkdown, 0), true, "active items are enforced regardless of strength");
-assert.match(mod.serializeBoardMarkdown(parsedActiveMarkdown), /\| hard \|/, "serialize keeps strength as compatibility markdown format");
+const parsedActiveMarkdown = mod.parseBoardMarkdown(markdownWithStoredMetadata, mod.createEmptyBoard());
+assert.equal(parsedActiveMarkdown.items[0].strength, "hard", "stored metadata is still parsed for session compatibility");
+assert.equal(mod.hasUninjectedEnforcedChanges(parsedActiveMarkdown, 0), true, "active items are enforced regardless of stored metadata");
+assert.doesNotMatch(mod.serializeBoardMarkdown(parsedActiveMarkdown), /\bsoft\b|\bhard\b/, "markdown serialization hides stored metadata values");
 
 const markdown = mod.serializeBoardMarkdown(withDecision);
-const parsed = mod.parseBoardMarkdown(markdown.replace("soft", "hard"), withDecision);
-assert.equal(parsed.items.find((item) => item.id === "A1").strength, "hard");
+assert.doesNotMatch(markdown, /\bsoft\b|\bhard\b/, "markdown editor output hides stored metadata values");
+const parsed = mod.parseBoardMarkdown(markdown.replace("Backend uses Node 22", "Backend uses Node 24"), withDecision);
+assert.equal(parsed.items.find((item) => item.id === "A1").text, "Backend uses Node 24");
+assert.equal(parsed.items.find((item) => item.id === "A1").strength, withDecision.items.find((item) => item.id === "A1").strength);
 assert.equal(parsed.version, withDecision.version + 1);
 assert.equal(parsed.items.find((item) => item.id === "A1").version, parsed.version, "changed items get new item version");
 assert.throws(

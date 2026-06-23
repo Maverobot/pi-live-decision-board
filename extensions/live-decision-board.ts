@@ -772,7 +772,7 @@ export function serializeBoardMarkdown(board: BoardState): string {
 	}
 
 	for (const item of board.items) {
-		lines.push(`- ${item.id} | ${item.kind} | ${item.status} | ${item.strength} | ${item.text}`);
+		lines.push(`- ${item.id} | ${item.kind} | ${item.status} | ${item.text}`);
 	}
 	return `${lines.join("\n")}\n`;
 }
@@ -790,16 +790,19 @@ export function parseBoardMarkdown(markdown: string, previousBoard: BoardState):
 		const line = rawLine.trim();
 		if (!line || line.startsWith("#") || line.startsWith("_")) continue;
 		if (!line.startsWith("- ")) {
-			throw new Error(`Invalid board markdown line ${lineIndex + 1}: expected '- ID | kind | status | strength | text'`);
+			throw new Error(`Invalid board markdown line ${lineIndex + 1}: expected '- ID | kind | status | text'`);
 		}
 
 		const fields = line.slice(2).split("|").map((field) => field.trim());
-		if (fields.length < 5) {
-			throw new Error(`Invalid board markdown line ${lineIndex + 1}: expected 5 pipe-separated fields`);
+		if (fields.length < 4) {
+			throw new Error(`Invalid board markdown line ${lineIndex + 1}: expected 4 pipe-separated fields`);
 		}
 
-		const [id, kind, status = "active", strength = "soft", ...textParts] = fields;
-		const text = textParts.join(" | ").trim();
+		const [id, kind, status = "active"] = fields;
+		const previous = previousById.get(id.trim());
+		const hasStoredMetadataColumn = fields.length >= 5 && isBoardStrength(fields[3]);
+		const strength = hasStoredMetadataColumn ? fields[3] : previous?.strength ?? "soft";
+		const text = (hasStoredMetadataColumn ? fields.slice(4) : fields.slice(3)).join(" | ").trim();
 		const parsedItem = parseMarkdownItem({ id, kind, status, strength, text, lineIndex, previousById, nextVersion, timestamp });
 
 		if (items.some((item) => item.id === parsedItem.id)) {
@@ -850,7 +853,7 @@ function parseMarkdownItem(input: {
 	if (!isBoardKind(input.kind)) throw new Error(`Invalid board item kind on line ${input.lineIndex + 1}: ${input.kind}`);
 	if (!isBoardStatus(input.status)) throw new Error(`Invalid board item status on line ${input.lineIndex + 1}: ${input.status}`);
 	if (!isBoardStrength(input.strength)) {
-		throw new Error(`Invalid board item strength on line ${input.lineIndex + 1}: ${input.strength}`);
+		throw new Error(`Invalid board item metadata on line ${input.lineIndex + 1}`);
 	}
 	const text = normalizeBoardText(input.text);
 	if (!text) throw new Error(`Missing board item text on line ${input.lineIndex + 1}`);
@@ -1742,7 +1745,6 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 			id: Type.Optional(Type.String()),
 			kind: Type.Optional(StringEnum(["goal", "assumption", "decision"] as const)),
 			text: Type.Optional(Type.String()),
-			strength: Type.Optional(StringEnum(["soft", "hard"] as const)),
 			itemVersion: Type.Optional(Type.Number()),
 			reason: Type.Optional(Type.String()),
 			recommendations: Type.Optional(Type.Array(reviewCleanupRecommendationSchema)),
@@ -1758,7 +1760,6 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 					kind: params.kind,
 					text: params.text,
 					status: "active",
-					strength: params.strength ?? "soft",
 					source: "agent",
 				});
 				const item = nextBoard.items.at(-1)!;

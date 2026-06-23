@@ -182,7 +182,7 @@ const activeBoardForRestore = initialBoard;
 
 const addResult = await registeredTool.execute(
 	"tool-1",
-	{ action: "add", kind: "decision", text: "Prefer minimal MVP", strength: "hard" },
+	{ action: "add", kind: "decision", text: "Prefer minimal MVP" },
 	undefined,
 	undefined,
 	ctx,
@@ -190,10 +190,11 @@ const addResult = await registeredTool.execute(
 assert.match(addResult.content[0].text, /D2/);
 assert.match(addResult.content[0].text, /fresh board context/i, "agent board mutations should return fresh context for same-turn continuation");
 assert.match(addResult.content[0].text, /Live Goal, Assumptions & Decisions/, "changed decision_board results should include the current board context");
-assert.equal(entries.at(-1).data.items.at(-1).strength, "hard");
+assert.equal(entries.at(-1).data.items.at(-1).strength, "soft");
 const allowedAfterToolBoardMutation = await events.get("tool_call")({ toolName: "write", input: { path: "x", content: "y" } }, ctx);
 assert.equal(allowedAfterToolBoardMutation, undefined, "agent-sourced board mutations should not block same-turn file edits after returning fresh context");
 
+assert(!JSON.stringify(registeredTool.parameters).includes('"strength"'), "decision_board schema should not expose stored metadata fields");
 assert(!JSON.stringify(registeredTool.parameters).includes('"set_strength"'), "decision_board schema should not expose set_strength actions");
 assert(!JSON.stringify(registeredTool.parameters).includes('"set_status"'), "decision_board schema should not expose set_status actions");
 assert(!JSON.stringify(registeredTool.parameters).includes('"supersede"'), "decision_board schema should not expose supersede actions");
@@ -226,9 +227,12 @@ assert.equal(latestSendOptions.deliverAs, "steer");
 assert.equal(latestSendOptions.triggerTurn, true);
 assert.match(latestMessage.content, /Live Decision Board changed/);
 
-ctx.ui.editor = async (_title, initial) => initial.replace("soft", "hard");
+ctx.ui.editor = async (_title, initial) => {
+	assert.doesNotMatch(initial, /\bsoft\b|\bhard\b|strength/i, "board editor should hide stored metadata fields");
+	return initial.replace("Implementation should stay surgical", "Implementation should stay tiny");
+};
 await commands.get("board").handler("", busyCtx);
-assert.equal(entries.at(-1).data.items.find((item) => item.id === "A1").strength, "hard");
+assert(entries.at(-1).data.items.some((item) => item.text === "Implementation should stay tiny"));
 assert.equal(latestMessage.customType, "live-decision-board-delta", "busy user board edits steer the worker");
 
 assert(events.has("tool_call"), "tool_call guard should be registered");
@@ -323,7 +327,7 @@ assert.equal(sessionContextAfterClearInjection, undefined, "archived-only boards
 	);
 	await localTool.execute(
 		"goal-tool",
-		{ action: "add", kind: "goal", text: "Tool-set current goal", status: "active", strength: "soft" },
+		{ action: "add", kind: "goal", text: "Tool-set current goal", status: "active" },
 		undefined,
 		undefined,
 		localCtx,
