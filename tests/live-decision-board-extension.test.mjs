@@ -54,8 +54,6 @@ for (const name of [
 	"goal",
 	"assume",
 	"decide",
-	"board-hard",
-	"board-soft",
 	"board-archive",
 	"board-clear",
 ]) {
@@ -83,9 +81,8 @@ assert.equal(commands.has("board-supersede"), false, "board-supersede compatibil
 assert.match(commands.get("board-clear").description, /fallback/i, "board-clear should be documented as a fallback command");
 assert.match(commands.get("board-clear").description, /archive.*active|active.*archive/i, "board-clear should describe archive-only clear semantics");
 assert.match(commands.get("board-clear").description, /prefer\s+\/board-manage/i, "board-clear should prefer board-manage once manager clear exists");
-
-assert.match(commands.get("board-hard").description, /active board items are enforced automatically/i, "board-hard help should say it is compatibility-only");
-assert.doesNotMatch(commands.get("board-hard").description, /accepted decisions/i, "board-hard help should not imply it only covers decisions");
+assert.equal(commands.has("board-hard"), false, "board-hard compatibility no-op should not be registered");
+assert.equal(commands.has("board-soft"), false, "board-soft compatibility no-op should not be registered");
 assert.equal(registeredTool.name, "decision_board", "decision_board tool should be registered");
 assert.equal(registeredTool.executionMode, "sequential", "decision_board runs sequentially before later tool preflights");
 const promptGuidelines = registeredTool.promptGuidelines.join("\n");
@@ -182,15 +179,6 @@ await commands.get("board-history").handler("", ctx);
 assert.match(latestMessage.content, /Inactive history:/);
 assert.match(latestMessage.content, /\[A1\].*Backend uses Node 22.*archived/, "board-history exposes archived items with archive terminology");
 const activeBoardForRestore = initialBoard;
-const beforeNoOp = entries.length;
-latestNotificationMessage = "";
-await commands.get("board-hard").handler("D1", ctx);
-assert.equal(entries.length, beforeNoOp, "board-hard command is compatibility no-op");
-assert.match(latestNotificationMessage, /active.*enforced/i, "board-hard should explain automatic active enforcement");
-latestNotificationMessage = "";
-await commands.get("board-soft").handler("D1", ctx);
-assert.equal(entries.length, beforeNoOp, "board-soft command is compatibility no-op");
-assert.match(latestNotificationMessage, /active.*enforced/i, "board-soft should explain automatic active enforcement");
 
 const addResult = await registeredTool.execute(
 	"tool-1",
@@ -202,33 +190,9 @@ const addResult = await registeredTool.execute(
 assert.match(addResult.content[0].text, /D2/);
 assert.match(addResult.content[0].text, /wait for the next model turn before mutating files/i, "agent board mutations should warn about stale-context blocks");
 assert.equal(entries.at(-1).data.items.at(-1).strength, "hard");
-const beforeToolNoOp = entries.length;
-const noOpToolResult = await registeredTool.execute(
-	"tool-noop",
-	{ action: "set_strength", id: "D2", strength: "hard" },
-	undefined,
-	undefined,
-	ctx,
-);
-assert.equal(entries.length, beforeToolNoOp, "set_strength compatibility action should not append duplicate board entries");
-assert.match(noOpToolResult.content[0].text, /set_strength.*deprecated/i, "set_strength no-op should report deprecation");
 
-const noStrengthToolResult = await registeredTool.execute(
-	"tool-3",
-	{ action: "set_strength", id: "D2" },
-	undefined,
-	undefined,
-	ctx,
-);
-assert.equal(entries.length, beforeToolNoOp, "set_strength without strength should remain no-op compatibility behavior");
-assert.match(noStrengthToolResult.content[0].text, /set_strength.*deprecated/i, "set_strength missing strength should report deprecation");
-
+assert(!JSON.stringify(registeredTool.parameters).includes('"set_strength"'), "decision_board schema should not expose set_strength actions");
 assert(!JSON.stringify(registeredTool.parameters).includes('"set_status"'), "decision_board schema should not expose set_status actions");
-await assert.rejects(
-	() => registeredTool.execute("tool-status-removed", { action: "set_status", id: "D2", status: "active" }, undefined, undefined, ctx),
-	/Unsupported decision_board action/,
-	"removed set_status action should not silently no-op when called directly",
-);
 assert(!JSON.stringify(registeredTool.parameters).includes('"supersede"'), "decision_board schema should not expose supersede actions");
 assert(!JSON.stringify(registeredTool.parameters).includes('"rejected"'), "decision_board schema should not expose retired rejected status");
 assert(!JSON.stringify(registeredTool.parameters).includes('"archived"'), "decision_board tool schema should require direct archive action instead of archived status");
@@ -2152,7 +2116,7 @@ assert.equal(sessionContextAfterClearInjection, undefined, "archived-only boards
 	const entriesBeforeManagerActions = localEntries.length;
 	await localCommands.get("board-manage").handler("", localCtx);
 	const finalBoard = localEntries.at(-1).data;
-	assert.equal(localEntries.length, entriesBeforeManagerActions + 2, "manager persists archive/edit exactly once and ignores removed compatibility actions");
+	assert.equal(localEntries.length, entriesBeforeManagerActions + 2, "manager persists archive/edit exactly once and ignores unknown keys");
 	assert.equal(finalBoard.items.find((item) => item.id === "D1").status, "archived", "manager keeps archived items archived without an accept action");
 	assert.equal(finalBoard.items.find((item) => item.id === "D1").text, "Managed decision edited", "manager can edit selected item text");
 	assert.equal(editorTitle, "Edit decision", "manager edit title hides item keys while preserving kind context");

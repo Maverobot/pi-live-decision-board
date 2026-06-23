@@ -41,15 +41,13 @@ pi -e .
 | `/board-history` | Show active plus inactive archived board history as a visible message |
 | `/board-toggle` | Collapse or expand the persistent board body while keeping the summary line visible |
 
-### Power-user / compatibility commands
+### Power-user commands
 
 | Command | Purpose |
 | --- | --- |
 | `/board` | Power-user editor for the live board markdown |
 | `/board-archive <id>` | Power-user fallback to archive an item by id; prefer `/board-manage` |
 | `/board-clear` | Power-user fallback to archive all active board items after confirmation; prefer `/board-manage` |
-| `/board-hard <id>` | Deprecated compatibility no-op: active-item enforcement now ignores hard/soft commands |
-| `/board-soft <id>` | Deprecated compatibility no-op: active-item enforcement now ignores hard/soft commands |
 
 ## Agent tool
 
@@ -58,7 +56,6 @@ The extension registers a `decision_board` tool with actions:
 - `list`
 - `add`
 - `update`
-- `set_strength` (compatibility no-op; active status controls enforcement)
 - `archive`
 - `review_cleanup`
 

@@ -1612,9 +1612,6 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 		restoreBoard(ctx);
 	});
 
-	const compatibilityStrengthMessage =
-		"Active board items are enforced automatically; /board-hard and /board-soft are compatibility no-ops.";
-
 	pi.registerCommand("board-snapshot", {
 		description: "Show the active context snapshot of the live goal/assumptions/decisions board as a visible message",
 		handler: async (_args, _ctx) => showBoard(),
@@ -1682,20 +1679,6 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 		},
 	});
 
-	pi.registerCommand("board-hard", {
-		description: "Compatibility no-op: active board items are enforced automatically",
-		handler: async (_args, ctx) => {
-			ctx.ui.notify(`Compatibility: ${compatibilityStrengthMessage}`, "info");
-		},
-	});
-
-	pi.registerCommand("board-soft", {
-		description: "Compatibility no-op: deprecate board-soft in favor of active-item enforcement",
-		handler: async (_args, ctx) => {
-			ctx.ui.notify(`Compatibility: ${compatibilityStrengthMessage}`, "info");
-		},
-	});
-
 	function archiveBoardById(args: string, ctx: ExtensionContext): boolean {
 		return safeApplyBoard(ctx, "Archived item", () => updateBoardItem(board, args.trim(), { status: "archived" }));
 	}
@@ -1749,7 +1732,7 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 		],
 		executionMode: "sequential",
 		parameters: Type.Object({
-			action: StringEnum(["list", "add", "update", "set_strength", "archive", "review_cleanup"] as const),
+			action: StringEnum(["list", "add", "update", "archive", "review_cleanup"] as const),
 			id: Type.Optional(Type.String()),
 			kind: Type.Optional(StringEnum(["goal", "assumption", "decision"] as const)),
 			text: Type.Optional(Type.String()),
@@ -1851,16 +1834,6 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 				if (!Number.isInteger(params.itemVersion) || params.itemVersion <= 0) throw new Error("decision_board update requires a current positive itemVersion");
 				if (current.version !== params.itemVersion) throw new Error(`Board item ${targetId} changed since it was observed`);
 				nextBoard = updateBoardItem(board, targetId, { text: params.text });
-			} else if (params.action === "set_strength") {
-				return {
-					content: [
-						{
-							type: "text",
-							text: "No change: decision_board set_strength is deprecated. Active board items are enforced automatically and legacy strength changes are a no-op.",
-						},
-					],
-					details: { board },
-				};
 			} else {
 				throw new Error(`Unsupported decision_board action: ${String(params.action)}`);
 			}
