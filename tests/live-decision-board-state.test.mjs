@@ -281,6 +281,21 @@ assert.equal(archived.version, 3, "updating item increments version");
 assert.equal(archived.items[0].status, "archived");
 assert.throws(() => mod.updateBoardItem(withDecision, "A1", { status: "rejected" }), /Invalid board item status/, "retired rejected status is no longer valid for direct updates");
 assert.throws(() => mod.updateBoardItem(withDecision, "A1", { status: "superseded" }), /Invalid board item status/, "retired superseded status is no longer valid for direct updates");
+assert.throws(() => mod.addBoardItem(board, { kind: "bogus", text: "Invalid kind" }), /Invalid board item kind/, "runtime board helpers reject invalid kinds");
+assert.throws(() => mod.addBoardItem(board, { kind: "decision", text: "Invalid strength", strength: "bogus" }), /Invalid board item strength/, "runtime board helpers reject invalid strengths");
+assert.throws(() => mod.addBoardItem(board, { kind: "decision", text: "Invalid source", source: "bogus" }), /Invalid board item source/, "runtime board helpers reject invalid sources");
+assert.throws(() => mod.updateBoardItem(withDecision, "D1", { strength: "bogus" }), /Invalid board item strength/, "runtime updates reject invalid strengths");
+assert.throws(() => mod.updateBoardItem(withDecision, "D1", { source: "bogus" }), /Invalid board item source/, "runtime updates reject invalid sources");
+assert.throws(() => mod.updateBoardItem(withDecision, "D1", { kind: "bogus", text: "Changed" }), /Invalid board item patch field/, "runtime updates reject unknown patch fields before spreading");
+
+const controlTextBoard = mod.addBoardItem(board, { kind: "decision", text: "safe\u001b[2J unsafe\u0007" });
+assert.equal(controlTextBoard.items[0].text, "safe unsafe", "board text strips terminal control sequences at capture");
+assert.doesNotMatch(mod.formatBoardWidget(controlTextBoard).join("\n"), /\x1B|\u0007/, "widget output omits terminal control sequences");
+assert.doesNotMatch(mod.serializeBoardMarkdown(controlTextBoard), /\x1B|\u0007/, "markdown output omits terminal control sequences");
+const tooLongText = "x".repeat(501);
+assert.throws(() => mod.addBoardItem(board, { kind: "decision", text: tooLongText }), /500 characters or fewer/, "board items reject oversized text");
+assert.throws(() => mod.updateBoardItem(withDecision, "D1", { text: tooLongText }), /500 characters or fewer/, "board updates reject oversized text");
+assert.throws(() => mod.parseBoardMarkdown(`# Live Decision Board\n\n- D1 | decision | active | soft | ${tooLongText}\n`, mod.createEmptyBoard()), /500 characters or fewer/, "markdown edits reject oversized text");
 
 const unchangedByUndefined = mod.updateBoardItem(withDecision, "D1", { status: undefined, strength: undefined });
 assert.equal(unchangedByUndefined.version, withDecision.version, "undefined-only patches are no-ops");

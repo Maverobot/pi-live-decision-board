@@ -303,6 +303,8 @@ assert.equal(
 );
 const allowedAfterClearInjection = await events.get("tool_call")({ toolName: "write", input: { path: "x", content: "y" } }, ctx);
 assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board releases the stale enforced-item guard");
+const sessionContextAfterClearInjection = await events.get("before_agent_start")({}, ctx);
+assert.equal(sessionContextAfterClearInjection, undefined, "archived-only boards stop injecting session context after stale barriers are satisfied");
 
 {
 	const localCommands = new Map();
@@ -347,6 +349,11 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 	assert.equal(board.items.find((item) => item.id === "G2")?.text, "Polish the board taxonomy", "/goal should create the current goal");
 	assert.equal(board.items.filter((item) => item.kind === "goal" && item.status === "active").length, 1, "/goal keeps one active current goal");
 
+	await assert.rejects(
+		() => localTool.execute("bad-kind-tool", { action: "add", kind: "bogus", text: "Bad kind" }, undefined, undefined, localCtx),
+		/Invalid board item kind/,
+		"direct tool execution should not persist invalid board kinds when schema validation is bypassed",
+	);
 	await localTool.execute(
 		"goal-tool",
 		{ action: "add", kind: "goal", text: "Tool-set current goal", status: "active", strength: "soft" },
@@ -525,6 +532,47 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 		},
 	});
 	assert.match(nonTuiNotification, /requires TUI mode/, "board-manage should explain that it needs TUI mode");
+}
+
+{
+	const localCommands = new Map();
+	const localEvents = new Map();
+	let customCalls = 0;
+	const localCtx = {
+		mode: "tui",
+		hasUI: true,
+		isIdle: () => true,
+		sessionManager: { getBranch: () => [] },
+		ui: {
+			theme: { fg: (_color, text) => text },
+			setStatus: () => {},
+			setWidget: () => {},
+			notify: () => {},
+			confirm: async () => true,
+			editor: async (_title, initial) => initial,
+			custom: async () => {
+				customCalls += 1;
+				if (customCalls > 1) throw new Error("board-manage reopened after overlay dismissal");
+				return undefined;
+			},
+		},
+	};
+
+	extension({
+		on(eventName, callback) {
+			localEvents.set(eventName, callback);
+		},
+		registerCommand(name, def) {
+			localCommands.set(name, def);
+		},
+		registerTool() {},
+		appendEntry() {},
+		sendMessage() {},
+	});
+
+	await localEvents.get("session_start")({}, localCtx);
+	await localCommands.get("board-manage").handler("", localCtx);
+	assert.equal(customCalls, 1, "board-manage treats overlay dismissal as cancel instead of reopening");
 }
 
 {
@@ -2077,7 +2125,9 @@ assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board
 				const component = factory({ requestRender: () => {} }, testTheme, {}, (value) => {
 					result = value;
 				});
-				component.handleInput(queuedKeys.shift());
+				while (result === undefined && queuedKeys.length > 0) {
+					component.handleInput(queuedKeys.shift());
+				}
 				return result;
 			},
 		},

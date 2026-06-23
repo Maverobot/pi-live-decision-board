@@ -57,6 +57,7 @@ const DELTA_CUSTOM_TYPE = "live-decision-board-delta";
 const BOARD_CONTEXT_TYPES = new Set([CONTEXT_CUSTOM_TYPE, VISIBLE_CUSTOM_TYPE, DELTA_CUSTOM_TYPE]);
 
 const ACTIVE_BOARD_NUDGE_LIMIT = 12;
+const MAX_BOARD_ITEM_TEXT_LENGTH = 500;
 const BOARD_MUTATION_BATCH_RULE = "Do not batch decision_board mutations with file mutations; mutate the board first, then wait for the next model turn.";
 const BOARD_MUTATION_FRESH_CONTEXT_HINT = "Board changed; wait for the next model turn before mutating files.";
 
@@ -64,6 +65,7 @@ const BOARD_ITEM_STATUSES: BoardStatus[] = ["active", "archived"];
 const BOARD_ITEM_STRENGTHS: BoardStrength[] = ["soft", "hard"];
 const BOARD_ITEM_KINDS: BoardKind[] = ["goal", "assumption", "decision"];
 const BOARD_ITEM_SOURCES: BoardSource[] = ["user", "agent", "discussion-loop"];
+const BOARD_PATCH_FIELDS = new Set(["text", "status", "strength", "source"]);
 
 export function createEmptyBoard(): BoardState {
 	return { version: 0, hardDecisionBarrierVersion: 0, nextGoalId: 1, nextAssumptionId: 1, nextDecisionId: 1, items: [] };
@@ -88,7 +90,25 @@ function now(): number {
 }
 
 function normalizeBoardText(text: string): string {
-	return text.replace(/\r?\n/g, " ").replace(/\s+/g, " ").trim();
+	const normalized = stripTerminalControlSequences(text).replace(/\r?\n/g, " ").replace(/\s+/g, " ").trim();
+	if (normalized.length > MAX_BOARD_ITEM_TEXT_LENGTH) {
+		throw new Error(`Board item text must be ${MAX_BOARD_ITEM_TEXT_LENGTH} characters or fewer`);
+	}
+	return normalized;
+}
+
+function stripTerminalControlSequences(text: string): string {
+	return text
+		.replace(/\x1B(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1B\\)|[@-Z\\-_])/g, "")
+		.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/g, "");
+}
+
+function tryNormalizeBoardText(text: string): string | undefined {
+	try {
+		return normalizeBoardText(text);
+	} catch {
+		return undefined;
+	}
 }
 
 function isEnforcedItem(item: Pick<BoardItem, "status">): boolean {
@@ -106,11 +126,15 @@ function maxEnforcedItemVersion(items: BoardItem[]): number {
 export function addBoardItem(board: BoardState, input: NewBoardItem): BoardState {
 	const text = normalizeBoardText(input.text);
 	if (!text) throw new Error("Board item text is required");
+	if (!isBoardKind(input.kind)) throw new Error(`Invalid board item kind: ${String(input.kind)}`);
 
 	const nextVersion = board.version + 1;
 	const status = input.status ?? "active";
 	if (!isBoardStatus(status)) throw new Error(`Invalid board item status: ${String(status)}`);
 	const strength = input.strength ?? "soft";
+	if (!isBoardStrength(strength)) throw new Error(`Invalid board item strength: ${String(strength)}`);
+	const source = input.source ?? "user";
+	if (!isBoardSource(source)) throw new Error(`Invalid board item source: ${String(source)}`);
 	const id = nextBoardItemId(board, input.kind);
 	const timestamp = now();
 	const item: BoardItem = {
@@ -119,7 +143,7 @@ export function addBoardItem(board: BoardState, input: NewBoardItem): BoardState
 		text,
 		status,
 		strength,
-		source: input.source ?? "user",
+		source,
 		version: nextVersion,
 		createdAt: timestamp,
 		updatedAt: timestamp,
@@ -146,7 +170,8 @@ export function addBoardItem(board: BoardState, input: NewBoardItem): BoardState
 function nextBoardItemId(board: BoardState, kind: BoardKind): string {
 	if (kind === "goal") return `G${board.nextGoalId}`;
 	if (kind === "assumption") return `A${board.nextAssumptionId}`;
-	return `D${board.nextDecisionId}`;
+	if (kind === "decision") return `D${board.nextDecisionId}`;
+	throw new Error(`Invalid board item kind: ${String(kind)}`);
 }
 
 function isActiveGoal(item: BoardItem): boolean {
@@ -158,13 +183,20 @@ export function updateBoardItem(board: BoardState, id: string, patch: BoardPatch
 	const existing = board.items.find((item) => item.id === normalizedId);
 	if (!existing) throw new Error(`Board item not found: ${normalizedId}`);
 
-	const cleanPatch = Object.fromEntries(
-		Object.entries(patch).filter(([, value]) => value !== undefined),
-	) as BoardPatch;
+	const patchEntries = Object.entries(patch).filter(([, value]) => value !== undefined);
+	const unknownField = patchEntries.find(([field]) => !BOARD_PATCH_FIELDS.has(field))?.[0];
+	if (unknownField) throw new Error(`Invalid board item patch field: ${unknownField}`);
+	const cleanPatch = Object.fromEntries(patchEntries) as BoardPatch;
 	if (Object.keys(cleanPatch).length === 0) return board;
 
 	if (cleanPatch.status !== undefined && !isBoardStatus(cleanPatch.status)) {
 		throw new Error(`Invalid board item status: ${String(cleanPatch.status)}`);
+	}
+	if (cleanPatch.strength !== undefined && !isBoardStrength(cleanPatch.strength)) {
+		throw new Error(`Invalid board item strength: ${String(cleanPatch.strength)}`);
+	}
+	if (cleanPatch.source !== undefined && !isBoardSource(cleanPatch.source)) {
+		throw new Error(`Invalid board item source: ${String(cleanPatch.source)}`);
 	}
 	const text = cleanPatch.text === undefined ? existing.text : normalizeBoardText(cleanPatch.text);
 	if (!text) throw new Error("Board item text is required");
@@ -682,13 +714,13 @@ function normalizeRestoredBoardItem(value: unknown): BoardItem | undefined {
 	if (!value || typeof value !== "object") return undefined;
 	const item = value as Partial<BoardItem> & { status?: unknown };
 	const status = normalizeRestoredBoardStatus(item.status);
+	const text = typeof item.text === "string" ? tryNormalizeBoardText(item.text) : undefined;
 	if (
 		typeof item.id !== "string" ||
 		!/^[GAD]\d+$/.test(item.id) ||
 		!isBoardKind(item.kind ?? "") ||
 		!((item.id.startsWith("G") && item.kind === "goal") || (item.id.startsWith("A") && item.kind === "assumption") || (item.id.startsWith("D") && item.kind === "decision")) ||
-		typeof item.text !== "string" ||
-		normalizeBoardText(item.text).length === 0 ||
+		!text ||
 		!status ||
 		!isBoardStrength(item.strength ?? "") ||
 		!isBoardSource(item.source ?? "") ||
@@ -701,7 +733,7 @@ function normalizeRestoredBoardItem(value: unknown): BoardItem | undefined {
 	return {
 		id: item.id,
 		kind: item.kind,
-		text: normalizeBoardText(item.text),
+		text,
 		status,
 		strength: item.strength as BoardStrength,
 		source: item.source as BoardSource,
@@ -1456,7 +1488,7 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 				(tui, theme, _keybindings, done) => new BoardManagerComponent(board, theme, done, () => tui.requestRender()),
 				{ overlay: true, overlayOptions: { width: "90%", minWidth: 60, maxHeight: "80%" } },
 			);
-			if (!action) continue;
+			if (!action) return;
 			if (action.type === "close") return;
 			if (boardEpoch !== baseEpoch) {
 				ctx.ui.notify("Live Decision Board changed while manager was open; action skipped and manager refreshed.", "warning");
@@ -1850,7 +1882,7 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 	});
 
 	pi.on("before_agent_start", async () => {
-		if (board.items.length === 0 && getHardDecisionBarrierVersion(board) === 0) return;
+		if (activeBoardItems(board).length === 0 && !hasUninjectedEnforcedChanges(board, lastInjectedBoardVersion)) return;
 		return { message: boardContextForSession() };
 	});
 

@@ -25,6 +25,7 @@
   "scripts": {
     "changelog": "node scripts/generate-changelog.mjs",
     "changelog:check": "node scripts/generate-changelog.mjs --check",
+    "check": "npm run changelog:check && npm test && npm pack --dry-run",
     "test": "npm run typecheck && node tests/live-decision-board-state.test.mjs && node tests/live-decision-board-extension.test.mjs",
     "typecheck": "tsc --noEmit"
   },

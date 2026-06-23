@@ -17,6 +17,4 @@ jobs:
           node-version: '22.19.0'
           cache: npm
       - run: npm ci
-      - run: npm run changelog:check
-      - run: npm test
-      - run: npm pack --dry-run
+      - run: npm run check

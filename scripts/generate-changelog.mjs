@@ -91,7 +91,7 @@ function buildChangelog(commits) {
 	const lines = [
 		"# Changelog",
 		"",
-		"All notable changes to this project are documented in this file.",
+		"Latest release changes are documented in this file.",
 		"",
 		"Entries are inferred from conventional git commit messages. Regenerate with `npm run changelog`.",
 		"",
