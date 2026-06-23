@@ -4,12 +4,21 @@ All notable changes to this project are documented in this file.
 
 Entries are inferred from conventional git commit messages. Regenerate with `npm run changelog`.
 
-## 0.1.4 - 2026-06-13
+## 0.1.5 - 2026-06-23
+
+### Added
+
+- simplify board cleanup workflow (82de993)
+- nudge board hygiene before stale mutations (db716b4)
 
 ### Fixed
 
-- harden board archive-only workflows (57df195)
+- warn against batched board mutations (2bef751)
 
-### Changed
+### Documentation
 
-- rename board cleanup workflows (434fa39)
+- add README decision board screenshot (75ae24d)
+
+### Maintenance
+
+- remove TODO.org (a288450)
