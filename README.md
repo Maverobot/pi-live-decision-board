@@ -4,6 +4,8 @@ A [Pi](https://pi.dev) package that adds a live, mutable goal, assumptions, and 
 
 The board is visible while the agent works, editable by the user, writable by the model through a tool, injected into future model context, and enforced before stale active-item mutations.
 
+![Expanded live decision board in Pi](docs/live-decision-board.png)
+
 ## Install
 
 ```bash
