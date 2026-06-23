@@ -3,7 +3,7 @@
  *
  * A Pi extension that keeps a visible, editable goal/assumptions/decisions board,
  * injects the latest board into model context, and blocks stale active-item
- * mutations until the board has been injected into a provider request.
+ * mutations until the board has been injected or returned by the tool.
  */
 
 import { StringEnum } from "@earendil-works/pi-ai";
@@ -58,8 +58,8 @@ const BOARD_CONTEXT_TYPES = new Set([CONTEXT_CUSTOM_TYPE, VISIBLE_CUSTOM_TYPE, D
 
 const ACTIVE_BOARD_NUDGE_LIMIT = 12;
 const MAX_BOARD_ITEM_TEXT_LENGTH = 500;
-const BOARD_MUTATION_BATCH_RULE = "Do not batch decision_board mutations with file mutations; mutate the board first, then wait for the next model turn.";
-const BOARD_MUTATION_FRESH_CONTEXT_HINT = "Board changed; wait for the next model turn before mutating files.";
+const BOARD_MUTATION_BATCH_RULE = "After decision_board mutates the board, reconcile the fresh board context returned by the tool before continuing file edits.";
+const BOARD_MUTATION_FRESH_CONTEXT_HINT = "Board changed; this tool result includes the fresh board context, so same-turn file edits may continue after reconciling it.";
 
 const BOARD_ITEM_STATUSES: BoardStatus[] = ["active", "archived"];
 const BOARD_ITEM_STRENGTHS: BoardStrength[] = ["soft", "hard"];
@@ -239,7 +239,9 @@ function boardBudgetWarning(board: BoardState): string | undefined {
 }
 
 function formatDecisionBoardToolResult(message: string, board: BoardState, changed = false): string {
-	return [message, boardBudgetWarning(board), changed ? BOARD_MUTATION_FRESH_CONTEXT_HINT : undefined].filter(Boolean).join("\n");
+	return [message, boardBudgetWarning(board), changed ? BOARD_MUTATION_FRESH_CONTEXT_HINT : undefined, changed ? formatBoardForPrompt(board) : undefined]
+		.filter(Boolean)
+		.join("\n\n");
 }
 
 export type CleanupAction = "keep" | "archive" | "needs_user_review";
@@ -1474,6 +1476,10 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 		} as ContextMessage;
 	}
 
+	function markBoardObservedFromToolResult(changed: boolean): void {
+		if (changed) lastInjectedBoardVersion = board.version;
+	}
+
 	function restoreBoard(ctx: ExtensionContext): void {
 		board = restoreBoardFromEntries(ctx.sessionManager.getBranch() as SessionEntryLike[]);
 		lastInjectedBoardVersion = 0;
@@ -1757,6 +1763,7 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 				});
 				const item = nextBoard.items.at(-1)!;
 				const result = commitBoard(nextBoard, ctx, "agent");
+				markBoardObservedFromToolResult(result.changed);
 				return { content: [{ type: "text", text: formatDecisionBoardToolResult(`Added ${item.id}: ${item.text}`, board, result.changed) }], details: { board, item } };
 			}
 
@@ -1786,6 +1793,7 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 					noActionableMessage: "review_cleanup: no selected actionable imported recommendations",
 					staleMessage: "Live Decision Board changed while review_cleanup was open; rerun decision_board.review_cleanup on the latest board.",
 				});
+				markBoardObservedFromToolResult(result.changed);
 				return {
 					content: [{
 						type: "text",
@@ -1819,6 +1827,7 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 					};
 				}
 				const result = commitBoard(nextBoard, ctx, "agent");
+				markBoardObservedFromToolResult(result.changed);
 				return {
 					content: [{ type: "text", text: formatDecisionBoardToolResult(result.changed ? `Archived ${targetId}: ${reason}` : `No change for ${targetId}`, board, result.changed) }],
 					details: { board, item: board.items.find((item) => item.id === targetId), boardContext: formatBoardForPrompt(board) },
@@ -1838,6 +1847,7 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 				throw new Error(`Unsupported decision_board action: ${String(params.action)}`);
 			}
 			const result = commitBoard(nextBoard, ctx, "agent");
+			markBoardObservedFromToolResult(result.changed);
 			return {
 				content: [{ type: "text", text: formatDecisionBoardToolResult(result.changed ? `Updated ${targetId}` : `No change for ${targetId}`, board, result.changed) }],
 				details: { board },

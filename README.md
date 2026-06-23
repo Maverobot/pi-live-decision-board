@@ -78,7 +78,7 @@ Prompt guidance tells the model to keep one current goal plus assumptions and de
 - Item keys remain available in `/board-history`, cleanup review, markdown, and item-targeted slash commands for precise references, but the keyboard manager is the preferred workflow.
 - The `context` hook removes stale board-generated context and injects one fresh board snapshot into provider requests when active items or a pending stale-enforcement barrier exist.
 - User/discussion-loop edits while the agent is busy queue a steering message so the next model turn sees the updated board.
-- Active items are enforced in context and block stale `write`, `edit`, and non-read-only `bash` calls until the fresh board has been injected.
+- Active items are enforced in context and block stale `write`, `edit`, and non-read-only `bash` calls until the fresh board has been injected or returned by `decision_board`.
 
 ## Markdown board format
 
@@ -115,7 +115,7 @@ The board is the current working context, not a changelog. Add or keep one Goal 
 Good board items:
 
 - "Use keyboard-first board management unless Pi documents mouse support."
-- "Active items should block stale mutations until the next board injection."
+- "Active items should block stale mutations until the next board injection or fresh `decision_board` result."
 - "Assumption: keep defaults stable until the user requests a cleanup policy change."
 
 Bad active board items:
@@ -126,7 +126,7 @@ Bad active board items:
 
 Use `/board-cleanup` to review active items and archive obvious historical entries by hand. Archive removes an item from active context while retaining it in board history. Clear-active workflows archive all active items instead of deleting history. Use `/board-history` to inspect retained inactive items.
 
-When the board grows beyond 12 active items, prompt/tool output nudges the agent to archive or consolidate before adding more. Prompt guidance also tells agents not to batch `decision_board` mutations with file mutations; after an agent board mutation, tool output reminds the agent to wait for the next model turn before mutating files.
+When the board grows beyond 12 active items, prompt/tool output nudges the agent to archive or consolidate before adding more. After an agent board mutation, `decision_board` returns the fresh board context so the agent can reconcile it and continue same-turn file edits safely.
 
 For routine, clearly deprecated items, the current agent can call `decision_board` with `action: "archive"` after listing the current board. Direct archive requires the current item version and a reason, and should not be used for ambiguous current-context decisions; use `/board-cleanup` or `review_cleanup` instead when judgment is needed.
 

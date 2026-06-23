@@ -97,7 +97,7 @@ assert.doesNotMatch(promptGuidelines, /single read-only recommendation subagent/
 assert.match(promptGuidelines, /review_cleanup/i, "decision_board prompt guidance should mention cleanup recommendation review");
 assert.match(promptGuidelines, /decision_board\.review_cleanup/i, "prompt guidance should direct to review_cleanup action");
 assert.match(promptGuidelines, /archive.*deprecated|deprecated.*archive/i, "prompt guidance should describe direct deprecated-item archiving");
-assert.match(promptGuidelines, /Do not batch decision_board mutations with file mutations/, "prompt guidance should prevent same-turn stale-board blocks");
+assert.match(promptGuidelines, /fresh board context returned by the tool/, "prompt guidance should allow same-turn edits after tool-returned fresh context");
 assert.doesNotMatch(promptGuidelines, /Ask the user/i, "prompt guidance should not direct ask_user in cleanup workflow");
 assert.doesNotMatch(promptGuidelines, /Use hard only/i, "prompt guidance should not promote hard/soft distinction");
 
@@ -188,8 +188,11 @@ const addResult = await registeredTool.execute(
 	ctx,
 );
 assert.match(addResult.content[0].text, /D2/);
-assert.match(addResult.content[0].text, /wait for the next model turn before mutating files/i, "agent board mutations should warn about stale-context blocks");
+assert.match(addResult.content[0].text, /fresh board context/i, "agent board mutations should return fresh context for same-turn continuation");
+assert.match(addResult.content[0].text, /Live Goal, Assumptions & Decisions/, "changed decision_board results should include the current board context");
 assert.equal(entries.at(-1).data.items.at(-1).strength, "hard");
+const allowedAfterToolBoardMutation = await events.get("tool_call")({ toolName: "write", input: { path: "x", content: "y" } }, ctx);
+assert.equal(allowedAfterToolBoardMutation, undefined, "agent-sourced board mutations should not block same-turn file edits after returning fresh context");
 
 assert(!JSON.stringify(registeredTool.parameters).includes('"set_strength"'), "decision_board schema should not expose set_strength actions");
 assert(!JSON.stringify(registeredTool.parameters).includes('"set_status"'), "decision_board schema should not expose set_status actions");
