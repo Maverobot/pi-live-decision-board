@@ -93,7 +93,8 @@ assert.match(promptGuidelines, /visible-only by default/i, "tool guidance should
 assert.match(promptGuidelines, /explicitly injected|explicitly listed|decision_board/i, "tool guidance should describe explicit context paths");
 assert.doesNotMatch(promptGuidelines, /enforce.*current contract/i, "tool guidance should not force hidden board authority");
 assert.doesNotMatch(promptGuidelines, /before mutating files/i, "tool guidance should not imply default write-blocking");
-assert.match(promptGuidelines, /one current goal/i, "decision_board prompt guidance should mention the single current goal");
+assert.match(promptGuidelines, /visible working contract/i, "decision_board prompt guidance should expose the agent's working contract");
+assert.match(promptGuidelines, /current goal, assumptions, and decisions\/constraints/i, "decision_board prompt guidance should define the working contract shape");
 assert.match(promptGuidelines, /high-signal/i, "decision_board prompt guidance should keep the active board high-signal");
 assert.match(promptGuidelines, /meaningfully change future behavior if forgotten/i, "decision_board prompt guidance should define when context belongs on the board");
 assert.match(promptGuidelines, /pinned preferences or session-critical assumptions/i, "decision_board prompt guidance should allow explicit adaptive-strictness exceptions");

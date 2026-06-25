@@ -525,6 +525,7 @@ export function formatBoardForPrompt(board: BoardState): string {
 	lines.push("Rules:");
 	lines.push("- Only treat this snapshot as current context when it was explicitly injected, listed, or returned by decision_board.");
 	lines.push("- Treat active items as current context only after checking they still match the user's current scope.");
+	lines.push("- The board is the agent's visible working contract: current goal, assumptions, and decisions/constraints it is relying on.");
 	lines.push("- Keep active items high-signal: only context that would meaningfully change future behavior if forgotten.");
 	lines.push("- Pinned preferences or session-critical assumptions are allowed when forgetting them would cause mistakes.");
 	lines.push("- If an item looks stale, low-signal, or merely historical, archive it before relying on it.");
@@ -1789,7 +1790,8 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 		promptSnippet: "List or update the current goal, assumptions, and decisions for the current project.",
 		promptGuidelines: [
 			"The Live Decision Board is visible-only by default; do not treat it as hidden current context unless the user explicitly injects it, explicitly asks about it, or you call decision_board.",
-			"Use decision_board to list or update one current goal plus high-signal active assumptions or decisions: keep only context that would meaningfully change future behavior if forgotten.",
+			"Use decision_board to expose the agent's visible working contract: current goal, assumptions, and decisions/constraints it is relying on.",
+			"Keep that contract high-signal: only context that would meaningfully change future behavior if forgotten.",
 			"Pinned preferences or session-critical assumptions are allowed when forgetting them would cause mistakes.",
 			"Use decision_board as a current-context contract only after it has been explicitly listed, injected, or returned by a decision_board mutation.",
 			"Do not use the board as an implementation log for progress updates, tests run, files changed, low-stakes notes, or completed review batches.",
