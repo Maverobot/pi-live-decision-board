@@ -95,6 +95,9 @@ assert.doesNotMatch(promptGuidelines, /enforce.*current contract/i, "tool guidan
 assert.doesNotMatch(promptGuidelines, /before mutating files/i, "tool guidance should not imply default write-blocking");
 assert.match(promptGuidelines, /visible working contract/i, "decision_board prompt guidance should expose the agent's working contract");
 assert.match(promptGuidelines, /current goal, assumptions, and decisions\/constraints/i, "decision_board prompt guidance should define the working contract shape");
+assert.match(promptGuidelines, /non-trivial work/i, "decision_board prompt guidance should proactively cover substantial tasks");
+assert.match(promptGuidelines, /call decision_board early/i, "decision_board prompt guidance should tell agents when to populate the board");
+assert.match(promptGuidelines, /Do not wait for the user to explicitly ask/i, "decision_board prompt guidance should not depend on explicit user prompting");
 assert.match(promptGuidelines, /high-signal/i, "decision_board prompt guidance should keep the active board high-signal");
 assert.match(promptGuidelines, /meaningfully change future behavior if forgotten/i, "decision_board prompt guidance should define when context belongs on the board");
 assert.match(promptGuidelines, /pinned preferences or session-critical assumptions/i, "decision_board prompt guidance should allow explicit adaptive-strictness exceptions");

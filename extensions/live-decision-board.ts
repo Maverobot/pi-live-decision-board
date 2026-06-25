@@ -1791,6 +1791,7 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 		promptGuidelines: [
 			"The Live Decision Board is visible-only by default; do not treat it as hidden current context unless the user explicitly injects it, explicitly asks about it, or you call decision_board.",
 			"Use decision_board to expose the agent's visible working contract: current goal, assumptions, and decisions/constraints it is relying on.",
+			"For non-trivial work, call decision_board early to set or refresh this working contract when you are relying on a goal, assumption, or decision. Do not wait for the user to explicitly ask.",
 			"Keep that contract high-signal: only context that would meaningfully change future behavior if forgotten.",
 			"Pinned preferences or session-critical assumptions are allowed when forgetting them would cause mistakes.",
 			"Use decision_board as a current-context contract only after it has been explicitly listed, injected, or returned by a decision_board mutation.",
