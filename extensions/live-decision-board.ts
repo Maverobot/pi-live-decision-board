@@ -523,10 +523,12 @@ export function formatBoardForPrompt(board: BoardState): string {
 	const decisions = active.filter((item) => item.kind === "decision");
 	const lines = [`## Explicit Board Snapshot — version ${board.version}`, ""];
 	lines.push("Rules:");
-	lines.push("- This snapshot is visible to the agent only because it was explicitly injected, listed, or returned by decision_board.");
+	lines.push("- Only treat this snapshot as current context when it was explicitly injected, listed, or returned by decision_board.");
 	lines.push("- Treat active items as current context only after checking they still match the user's current scope.");
-	lines.push("- If an item looks stale, archive it before relying on it.");
-	lines.push("- Keep at most one active Goal plus assumptions or decisions that affect future behavior; do not use the board as an implementation log.");
+	lines.push("- Keep active items high-signal: only context that would meaningfully change future behavior if forgotten.");
+	lines.push("- Pinned preferences or session-critical assumptions are allowed when forgetting them would cause mistakes.");
+	lines.push("- If an item looks stale, low-signal, or merely historical, archive it before relying on it.");
+	lines.push("- Keep at most one active Goal plus assumptions or decisions; do not use the board as an implementation log.");
 	lines.push("- When scope or goal changes, archive routine stale/deprecated items after listing the board; use decision_board.review_cleanup for ambiguous current-context changes.");
 	lines.push(`- ${BOARD_MUTATION_BATCH_RULE}`);
 	const budgetWarning = boardBudgetWarning(board);
@@ -1214,6 +1216,8 @@ class BoardCleanupComponent {
 		private readonly theme: Theme,
 		private readonly done: (result: CleanupReviewResult) => void,
 		private readonly requestRender: () => void,
+		private readonly title = "Board Cleanup",
+		private readonly helpText = "↑↓/j/k select • space toggle • enter apply selected • q/esc cancel",
 	) {
 		this.recommendations = recommendations
 			.map((recommendation, index) => ({ recommendation: { ...recommendation }, index }))
@@ -1253,7 +1257,7 @@ class BoardCleanupComponent {
 
 	render(width: number): string[] {
 		if (this.cachedLines && this.cachedWidth === width) return this.cachedLines;
-		const helpLine = truncateToWidth(this.theme.fg("dim", "↑↓/j/k select • space toggle • enter apply selected • q/esc cancel"), width);
+		const helpLine = truncateToWidth(this.theme.fg("dim", this.helpText), width);
 		const riskLegend = truncateToWidth(this.theme.fg("dim", "risk: low risk=safe cleanup • medium risk=needs judgment • high risk=likely current context"), width);
 		const lines = [
 			this.header(width),
@@ -1285,7 +1289,7 @@ class BoardCleanupComponent {
 	}
 
 	private header(width: number): string {
-		const title = ` ${this.theme.fg("accent", "Board Cleanup")} `;
+		const title = ` ${this.theme.fg("accent", this.title)} `;
 		return truncateToWidth(`${this.theme.fg("dim", "────")} ${title}${this.theme.fg("dim", "────")}`, width);
 	}
 
@@ -1591,13 +1595,15 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 		options?: {
 			noActionableMessage?: string;
 			staleMessage?: string;
+			title?: string;
+			helpText?: string;
 		},
 	): Promise<CleanupReviewRunResult> {
 		const noActionableMessage = options?.noActionableMessage ?? "Board cleanup: no selected changes";
 		const staleMessage = options?.staleMessage ?? "Live Decision Board changed while cleanup was open; rerun /board-cleanup on the latest board.";
 		const baseEpoch = boardEpoch;
 		const result = await ctx.ui.custom<CleanupReviewResult>(
-			(tui, theme, _keybindings, done) => new BoardCleanupComponent(recommendations, theme, done, () => tui.requestRender()),
+			(tui, theme, _keybindings, done) => new BoardCleanupComponent(recommendations, theme, done, () => tui.requestRender(), options?.title, options?.helpText),
 			{ overlay: true, overlayOptions: { width: "90%", minWidth: 70, maxHeight: "80%" } },
 		);
 		if (!result || result.type === "cancel") return { changed: false, appliedRecommendations: 0, completed: false };
@@ -1643,8 +1649,10 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 
 		if (ctx.mode === "tui") {
 			const result = await runCleanupReview(ctx, recommendBoardCleanup(board), {
-				noActionableMessage: "Board inject: no cleanup changes selected",
+				noActionableMessage: "Board inject: continuing without cleanup changes",
 				staleMessage: "Live Decision Board changed while injection review was open; rerun /board-inject on the latest board.",
+				title: "Board Inject Review",
+				helpText: "↑↓/j/k select • space toggle cleanup • enter continue to inject • q/esc cancel",
 			});
 			if (!result.completed) {
 				ctx.ui.notify("Board injection cancelled", "info");
@@ -1781,9 +1789,10 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 		promptSnippet: "List or update the current goal, assumptions, and decisions for the current project.",
 		promptGuidelines: [
 			"The Live Decision Board is visible-only by default; do not treat it as hidden current context unless the user explicitly injects it, explicitly asks about it, or you call decision_board.",
-			"Use decision_board to list or update one current goal plus active assumptions or decisions when the user asks you to use the board or when a decision must persist for future behavior.",
+			"Use decision_board to list or update one current goal plus high-signal active assumptions or decisions: keep only context that would meaningfully change future behavior if forgotten.",
+			"Pinned preferences or session-critical assumptions are allowed when forgetting them would cause mistakes.",
 			"Use decision_board as a current-context contract only after it has been explicitly listed, injected, or returned by a decision_board mutation.",
-			"Do not use the board as an implementation log for progress updates, tests run, files changed, or completed review batches.",
+			"Do not use the board as an implementation log for progress updates, tests run, files changed, low-stakes notes, or completed review batches.",
 			BOARD_MUTATION_BATCH_RULE,
 			"When scope changes, goals change, or active board items become stale, clean the board: list it, archive routine deprecated items with observed itemVersion and reason, and use decision_board.review_cleanup for ambiguous current-context changes.",
 			"Do not add active board items saying cleanup happened; do not spawn separate cleanup agents unless the user explicitly requests them.",

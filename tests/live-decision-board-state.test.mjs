@@ -72,9 +72,11 @@ assert.match(mod.formatBoardStatus(withSecondGoal), /1 goal/, "status summary in
 
 const prompt = mod.formatBoardForPrompt(withSecondGoal);
 assert.match(prompt, /Explicit Board Snapshot — version 4/);
-assert.match(prompt, /This snapshot is visible to the agent only because it was explicitly injected, listed, or returned by decision_board/);
+assert.match(prompt, /Only treat this snapshot as current context when it was explicitly injected, listed, or returned by decision_board/);
 assert.match(prompt, /Treat active items as current context only after checking they still match the user's current scope/);
-assert.match(prompt, /If an item looks stale, archive it before relying on it/);
+assert.match(prompt, /Keep active items high-signal: only context that would meaningfully change future behavior if forgotten/);
+assert.match(prompt, /Pinned preferences or session-critical assumptions are allowed when forgetting them would cause mistakes/);
+assert.match(prompt, /If an item looks stale, low-signal, or merely historical, archive it before relying on it/);
 assert.doesNotMatch(prompt, /enforced current context/i);
 assert.doesNotMatch(prompt, /before mutating files/i);
 assert.match(prompt, /Goal:/);

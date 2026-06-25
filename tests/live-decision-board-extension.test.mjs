@@ -94,6 +94,9 @@ assert.match(promptGuidelines, /explicitly injected|explicitly listed|decision_b
 assert.doesNotMatch(promptGuidelines, /enforce.*current contract/i, "tool guidance should not force hidden board authority");
 assert.doesNotMatch(promptGuidelines, /before mutating files/i, "tool guidance should not imply default write-blocking");
 assert.match(promptGuidelines, /one current goal/i, "decision_board prompt guidance should mention the single current goal");
+assert.match(promptGuidelines, /high-signal/i, "decision_board prompt guidance should keep the active board high-signal");
+assert.match(promptGuidelines, /meaningfully change future behavior if forgotten/i, "decision_board prompt guidance should define when context belongs on the board");
+assert.match(promptGuidelines, /pinned preferences or session-critical assumptions/i, "decision_board prompt guidance should allow explicit adaptive-strictness exceptions");
 assert.match(promptGuidelines, /active/i, "decision_board prompt guidance should mention active items");
 assert.doesNotMatch(promptGuidelines, /accepted|proposed/i, "decision_board prompt guidance should not expose proposed/accepted states");
 assert.doesNotMatch(promptGuidelines, /board-cleanup-auto/i, "prompt guidance should not mention removed auto command");
@@ -219,13 +222,18 @@ const contextResult = await events.get("context")(
 assert.deepEqual(contextResult.messages, [{ role: "user", content: "Continue", timestamp: 4 }], "default context hook filters old board messages but injects no board snapshot");
 
 let cleanupReviewOpened = false;
+let injectReviewText = "";
 ctx.mode = "tui";
-ctx.ui.custom = async () => {
+ctx.ui.custom = async (factory) => {
 	cleanupReviewOpened = true;
+	const component = factory({ requestRender: () => {} }, { fg: (_color, text) => text }, {}, () => {});
+	injectReviewText = component.render(100).join("\n");
 	return { type: "apply", recommendations: [] };
 };
 await commands.get("board-inject").handler("", ctx);
 assert.equal(cleanupReviewOpened, true, "board-inject opens cleanup review in TUI mode");
+assert.match(injectReviewText, /Board Inject Review/, "board-inject review title should describe injection, not only cleanup");
+assert.match(injectReviewText, /enter continue to inject/, "board-inject review help should explain that enter continues to injection");
 assert.match(latestNotificationMessage, /next model call/i);
 
 const injectedContext = await events.get("context")(
