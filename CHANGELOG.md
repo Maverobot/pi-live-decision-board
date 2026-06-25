@@ -8,7 +8,12 @@ Entries are inferred from conventional git commit messages. Regenerate with `npm
 
 ### Added
 
+- board: document adaptive strictness policy (7bfa5f3)
 - board: make the live board visible-only by default (5c9a1f1)
+
+### Documentation
+
+- board: clarify visible working contract (c9dd82a)
 
 ## 0.1.7 - 2026-06-23
 
