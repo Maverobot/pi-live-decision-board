@@ -8,6 +8,7 @@ Entries are inferred from conventional git commit messages. Regenerate with `npm
 
 ### Added
 
+- board: auto-provide consistency snapshot (ad8f241)
 - board: document adaptive strictness policy (7bfa5f3)
 - board: make the live board visible-only by default (5c9a1f1)
 
