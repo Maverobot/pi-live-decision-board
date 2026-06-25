@@ -47,6 +47,7 @@ extension({
 for (const name of [
 	"board",
 	"board-snapshot",
+	"board-inject",
 	"board-history",
 	"board-toggle",
 	"board-manage",
@@ -60,7 +61,9 @@ for (const name of [
 	assert(commands.has(name), `${name} command should be registered`);
 }
 assert.equal(commands.has("board-show"), false, "board-show should be renamed to board-snapshot");
-assert.match(commands.get("board-snapshot").description, /active context snapshot/, "board-snapshot should describe the active context view it records");
+assert.match(commands.get("board-snapshot").description, /active board snapshot/, "board-snapshot should describe the visible-only snapshot output it records");
+assert.match(commands.get("board-inject").description, /inject/i, "board-inject should describe explicit context injection");
+assert.match(commands.get("board-inject").description, /review|cleanup/i, "board-inject should mention the cleanup checkpoint");
 assert.match(commands.get("board-history").description, /inactive|history|archived/i, "board-history should describe inactive board history");
 assert.match(commands.get("assume").description, /active assumption/i, "assume command should use active-item wording");
 assert.doesNotMatch(commands.get("assume").description, /soft|hard/i, "assume command should not expose legacy strength wording");
@@ -86,18 +89,19 @@ assert.equal(commands.has("board-soft"), false, "board-soft compatibility no-op 
 assert.equal(registeredTool.name, "decision_board", "decision_board tool should be registered");
 assert.equal(registeredTool.executionMode, "sequential", "decision_board runs sequentially before later tool preflights");
 const promptGuidelines = registeredTool.promptGuidelines.join("\n");
-const autoCleanupContract = "When scope changes, goals change, or active board items become stale, clean the board automatically: list it, archive routine deprecated items with observed itemVersion and reason, and use decision_board.review_cleanup for ambiguous current-context changes.";
+assert.match(promptGuidelines, /visible-only by default/i, "tool guidance should explain the passive default");
+assert.match(promptGuidelines, /explicitly injected|explicitly listed|decision_board/i, "tool guidance should describe explicit context paths");
+assert.doesNotMatch(promptGuidelines, /enforce.*current contract/i, "tool guidance should not force hidden board authority");
+assert.doesNotMatch(promptGuidelines, /before mutating files/i, "tool guidance should not imply default write-blocking");
 assert.match(promptGuidelines, /one current goal/i, "decision_board prompt guidance should mention the single current goal");
 assert.match(promptGuidelines, /active/i, "decision_board prompt guidance should mention active items");
 assert.doesNotMatch(promptGuidelines, /accepted|proposed/i, "decision_board prompt guidance should not expose proposed/accepted states");
-assert.match(promptGuidelines, /enforce/i, "decision_board prompt guidance should mention enforcement");
-assert(promptGuidelines.includes(autoCleanupContract), "decision_board prompt guidance should enforce automatic cleanup on scope changes");
 assert.doesNotMatch(promptGuidelines, /board-cleanup-auto/i, "prompt guidance should not mention removed auto command");
 assert.doesNotMatch(promptGuidelines, /single read-only recommendation subagent/i, "prompt guidance should not promote subagent cleanup handoffs");
 assert.match(promptGuidelines, /review_cleanup/i, "decision_board prompt guidance should mention cleanup recommendation review");
 assert.match(promptGuidelines, /decision_board\.review_cleanup/i, "prompt guidance should direct to review_cleanup action");
 assert.match(promptGuidelines, /archive.*deprecated|deprecated.*archive/i, "prompt guidance should describe direct deprecated-item archiving");
-assert.match(promptGuidelines, /fresh board context returned by the tool/, "prompt guidance should allow same-turn edits after tool-returned fresh context");
+assert.match(promptGuidelines, /reconcile it before using it as current context/, "prompt guidance should allow same-turn use after tool-returned fresh board snapshot");
 assert.doesNotMatch(promptGuidelines, /Ask the user/i, "prompt guidance should not direct ask_user in cleanup workflow");
 assert.doesNotMatch(promptGuidelines, /Use hard only/i, "prompt guidance should not promote hard/soft distinction");
 
@@ -160,8 +164,8 @@ assert.match(latestMessage.content, /Active items:/);
 assert.match(latestMessage.content, /Backend uses Node 22/, "board-history includes active assumptions");
 const entriesBeforeToggle = entries.length;
 await commands.get("board-toggle").handler("", ctx);
-assert.doesNotMatch(latestNotificationMessage, /hard decisions/i, "collapse notification should use active-item enforcement wording");
-assert.match(latestNotificationMessage, /enforces active items/i, "collapse notification should explain active-item enforcement");
+assert.match(latestNotificationMessage, /visible-only/i, "collapse notification should describe visible-only default behavior");
+assert.match(latestNotificationMessage, /collapsed/i, "collapse notification should describe the collapsed widget state");
 const collapsedWidgetText = renderLatestWidgetText();
 assert.match(collapsedWidgetText, /Board/, "board-toggle keeps the board summary visible when collapsed");
 assert.doesNotMatch(collapsedWidgetText, /\bv\d+\b/, "collapsed board widget summary should also hide implementation-detail board versions");
@@ -188,8 +192,8 @@ const addResult = await registeredTool.execute(
 	ctx,
 );
 assert.match(addResult.content[0].text, /D2/);
-assert.match(addResult.content[0].text, /fresh board context/i, "agent board mutations should return fresh context for same-turn continuation");
-assert.match(addResult.content[0].text, /Live Goal, Assumptions & Decisions/, "changed decision_board results should include the current board context");
+assert.match(addResult.content[0].text, /fresh board snapshot/i, "agent board mutations should return fresh context for same-turn continuation");
+assert.match(addResult.content[0].text, /Explicit Board Snapshot/, "changed decision_board results should include the current board context");
 assert.equal(entries.at(-1).data.items.at(-1).strength, "soft");
 const allowedAfterToolBoardMutation = await events.get("tool_call")({ toolName: "write", input: { path: "x", content: "y" } }, ctx);
 assert.equal(allowedAfterToolBoardMutation, undefined, "agent-sourced board mutations should not block same-turn file edits after returning fresh context");
@@ -212,20 +216,118 @@ const contextResult = await events.get("context")(
 	},
 	ctx,
 );
-assert.equal(contextResult.messages[0].customType, "live-decision-board-context");
-assert.match(contextResult.messages[0].content, /Live Goal, Assumptions & Decisions/);
-assert.equal(
-	contextResult.messages.filter((message) => message.customType?.startsWith("live-decision-board")).length,
-	1,
-	"context hook keeps exactly one fresh board context message and filters stale visible/delta messages",
+assert.deepEqual(contextResult.messages, [{ role: "user", content: "Continue", timestamp: 4 }], "default context hook filters old board messages but injects no board snapshot");
+
+let cleanupReviewOpened = false;
+ctx.mode = "tui";
+ctx.ui.custom = async () => {
+	cleanupReviewOpened = true;
+	return { type: "apply", recommendations: [] };
+};
+await commands.get("board-inject").handler("", ctx);
+assert.equal(cleanupReviewOpened, true, "board-inject opens cleanup review in TUI mode");
+assert.match(latestNotificationMessage, /next model call/i);
+
+const injectedContext = await events.get("context")(
+	{ messages: [{ role: "user", content: "Use the injected board", timestamp: 7 }] },
+	ctx,
 );
+assert.equal(injectedContext.messages[0].customType, "live-decision-board-context", "manual injection adds one hidden board snapshot");
+assert.match(injectedContext.messages[0].content, /Explicit Board Snapshot/);
+assert.match(injectedContext.messages[0].content, /Build as a Pi extension first/);
+
+const repeatedContext = await events.get("context")(
+	{ messages: [{ role: "user", content: "Continue after injection", timestamp: 8 }] },
+	ctx,
+);
+assert.deepEqual(repeatedContext.messages, [{ role: "user", content: "Continue after injection", timestamp: 8 }], "manual injection is one-shot by default");
+
+ctx.ui.custom = async () => ({ type: "cancel" });
+await commands.get("board-inject").handler("", ctx);
+const cancelledContext = await events.get("context")(
+	{ messages: [{ role: "user", content: "No board please", timestamp: 9 }] },
+	ctx,
+);
+assert.deepEqual(cancelledContext.messages, [{ role: "user", content: "No board please", timestamp: 9 }], "cancelling cleanup review cancels injection");
+
+ctx.ui.custom = async () => ({ type: "apply", recommendations: [] });
+await commands.get("board-inject").handler("", ctx);
+ctx.ui.custom = async () => ({ type: "cancel" });
+await commands.get("board-inject").handler("", ctx);
+const cancelledQueuedContext = await events.get("context")(
+	{ messages: [{ role: "user", content: "Do not use older queued injection", timestamp: 10 }] },
+	ctx,
+);
+assert.deepEqual(cancelledQueuedContext.messages, [{ role: "user", content: "Do not use older queued injection", timestamp: 10 }], "a cancelled injection command clears any earlier pending injection");
+
+ctx.ui.custom = async () => ({ type: "apply", recommendations: [] });
+await commands.get("board-inject").handler("", ctx);
+const sessionInjection = await events.get("before_agent_start")({}, ctx);
+assert.equal(sessionInjection, undefined, "manual injection uses provider context, not before_agent_start session messages");
+const contextAfterSessionStart = await events.get("context")(
+	{ messages: [{ role: "user", content: "Use board after session start", timestamp: 11 }] },
+	ctx,
+);
+assert.equal(contextAfterSessionStart.messages[0].customType, "live-decision-board-context", "before_agent_start does not consume pending injection");
+
+const nonTuiCtx = { ...ctx, mode: "headless" };
+await commands.get("board-inject").handler("", nonTuiCtx);
+const nonTuiInjected = await events.get("context")(
+	{ messages: [{ role: "user", content: "Use board without TUI", timestamp: 12 }] },
+	ctx,
+);
+assert.equal(nonTuiInjected.messages[0].customType, "live-decision-board-context", "non-TUI injection skips cleanup UI but still injects explicitly");
+
+ctx.ui.custom = async () => {
+	await commands.get("assume").handler("Board changed during injection review", ctx);
+	return { type: "apply", recommendations: [] };
+};
+await commands.get("board-inject").handler("", ctx);
+const staleReviewContext = await events.get("context")(
+	{ messages: [{ role: "user", content: "Do not inject stale review", timestamp: 13 }] },
+	ctx,
+);
+assert.deepEqual(staleReviewContext.messages, [{ role: "user", content: "Do not inject stale review", timestamp: 13 }], "board-inject does not inject after a stale cleanup review");
+
+ctx.ui.custom = async () => ({ type: "apply", recommendations: [] });
+await commands.get("board-inject").handler("", ctx);
+await commands.get("assume").handler("Board changed after injection was queued", ctx);
+const changedBeforeContext = await events.get("context")(
+	{ messages: [{ role: "user", content: "Do not inject changed board", timestamp: 14 }] },
+	ctx,
+);
+assert.deepEqual(changedBeforeContext.messages, [{ role: "user", content: "Do not inject changed board", timestamp: 14 }], "queued injection is bound to the reviewed board version");
+const consumedAfterRace = await events.get("context")(
+	{ messages: [{ role: "user", content: "Still no stale injection", timestamp: 15 }] },
+	ctx,
+);
+assert.deepEqual(consumedAfterRace.messages, [{ role: "user", content: "Still no stale injection", timestamp: 15 }], "stale queued injection is consumed instead of leaking into a later board version");
+
+ctx.ui.custom = async () => ({ type: "apply", recommendations: [] });
+await commands.get("board-inject").handler("", ctx);
+const reviewedBoard = entries.at(-1).data;
+branchEntries = [{
+	type: "custom",
+	customType: "live-decision-board",
+	data: {
+		...reviewedBoard,
+		items: reviewedBoard.items.map((item) => item.id === "D1" ? { ...item, text: "Unreviewed same-version restored board" } : item),
+	},
+}];
+await events.get("session_tree")({}, ctx);
+const sameVersionRestoreContext = await events.get("context")(
+	{ messages: [{ role: "user", content: "Do not inject same-version restore", timestamp: 16 }] },
+	ctx,
+);
+assert.deepEqual(sameVersionRestoreContext.messages, [{ role: "user", content: "Do not inject same-version restore", timestamp: 16 }], "queued injection is bound to board epoch as well as version");
+
+const defaultSessionContext = await events.get("before_agent_start")({}, ctx);
+assert.equal(defaultSessionContext, undefined, "before_agent_start does not inject board context by default");
 
 const busyCtx = { ...ctx, isIdle: () => false };
+const previousMessage = latestMessage;
 await commands.get("assume").handler("Implementation should stay surgical", busyCtx);
-assert.equal(latestMessage.customType, "live-decision-board-delta");
-assert.equal(latestSendOptions.deliverAs, "steer");
-assert.equal(latestSendOptions.triggerTurn, true);
-assert.match(latestMessage.content, /Live Decision Board changed/);
+assert.equal(latestMessage, previousMessage, "busy board edits update the widget but do not steer hidden context by default");
 
 ctx.ui.editor = async (_title, initial) => {
 	assert.doesNotMatch(initial, /\bsoft\b|\bhard\b|strength/i, "board editor should hide stored metadata fields");
@@ -233,15 +335,14 @@ ctx.ui.editor = async (_title, initial) => {
 };
 await commands.get("board").handler("", busyCtx);
 assert(entries.at(-1).data.items.some((item) => item.text === "Implementation should stay tiny"));
-assert.equal(latestMessage.customType, "live-decision-board-delta", "busy user board edits steer the worker");
+assert.equal(latestMessage, previousMessage, "busy user board edits update the widget but do not steer hidden context by default");
 
-assert(events.has("tool_call"), "tool_call guard should be registered");
-const blocked = await events.get("tool_call")({ toolName: "write", input: { path: "x", content: "y" } }, ctx);
-assert.equal(blocked.block, true);
-assert.match(blocked.reason, /Live Decision Board changed/);
+assert(events.has("tool_call"), "tool_call hook should be registered");
+const allowedWrite = await events.get("tool_call")({ toolName: "write", input: { path: "x", content: "y" } }, ctx);
+assert.equal(allowedWrite, undefined, "visible-only default does not block writes after board changes");
 
-const blockedRedirect = await events.get("tool_call")({ toolName: "bash", input: { command: "echo hi > file.txt" } }, ctx);
-assert.equal(blockedRedirect.block, true, "stale enforced changes block shell redirection");
+const allowedRedirect = await events.get("tool_call")({ toolName: "bash", input: { command: "echo hi > file.txt" } }, ctx);
+assert.equal(allowedRedirect, undefined, "visible-only default does not block mutating shell commands");
 
 const allowed = await events.get("tool_call")({ toolName: "read", input: { path: "README.md" } }, ctx);
 assert.equal(allowed, undefined, "read-only tools are not blocked");
@@ -255,8 +356,8 @@ branchEntries = [
 	},
 ];
 await events.get("session_tree")({}, ctx);
-const blockedAfterRestore = await events.get("tool_call")({ toolName: "write", input: { path: "x", content: "y" } }, ctx);
-assert.equal(blockedAfterRestore.block, true, "restoring falls back past malformed latest entries and resets injected version before writes");
+const allowedAfterRestore = await events.get("tool_call")({ toolName: "write", input: { path: "x", content: "y" } }, ctx);
+assert.equal(allowedAfterRestore, undefined, "visible-only default mode does not create a stale-write barrier after restore");
 
 await events.get("context")({ messages: [{ role: "user", content: "Sync restored board", timestamp: 5 }] }, ctx);
 await commands.get("board-clear").handler("", ctx);
@@ -267,15 +368,11 @@ const clearContextResult = await events.get("context")(
 	{ messages: [{ role: "user", content: "Continue after clear", timestamp: 6 }] },
 	ctx,
 );
-assert.equal(
-	clearContextResult.messages[0].customType,
-	"live-decision-board-context",
-	"cleared enforced-item boards still inject once to satisfy the stale barrier",
-);
+assert.deepEqual(clearContextResult.messages, [{ role: "user", content: "Continue after clear", timestamp: 6 }], "cleared boards do not inject stale-barrier context by default");
 const allowedAfterClearInjection = await events.get("tool_call")({ toolName: "write", input: { path: "x", content: "y" } }, ctx);
-assert.equal(allowedAfterClearInjection, undefined, "injecting the cleared board releases the stale enforced-item guard");
+assert.equal(allowedAfterClearInjection, undefined, "visible-only default does not block writes after clear");
 const sessionContextAfterClearInjection = await events.get("before_agent_start")({}, ctx);
-assert.equal(sessionContextAfterClearInjection, undefined, "archived-only boards stop injecting session context after stale barriers are satisfied");
+assert.equal(sessionContextAfterClearInjection, undefined, "before_agent_start stays default no-op even after clear");
 
 {
 	const localCommands = new Map();
@@ -1679,7 +1776,7 @@ assert.equal(sessionContextAfterClearInjection, undefined, "archived-only boards
 	assert.equal(localEntries.length, entriesBeforeStaleEditorSave, "same-version branch changes should make open /board editor saves stale");
 	assert.match(latestNotification, /changed while editor was open/, "same-version stale /board editor saves should notify the user to reopen");
 	const blockedAfterSameVersionRestore = await localEvents.get("tool_call")({ toolName: "write", input: { path: "x", content: "y" } }, localCtx);
-	assert.equal(blockedAfterSameVersionRestore.block, true, "same-version stale /board editor saves must not drop the restored enforced barrier");
+	assert.equal(blockedAfterSameVersionRestore, undefined, "default visible-only mode does not restore enforced barriers");
 }
 
 {

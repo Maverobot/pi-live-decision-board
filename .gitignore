@@ -3,6 +3,8 @@ npm-debug.log*
 .DS_Store
 coverage/
 .pi/
+.superpowers/
+docs/plans/
 
 reviews/
 .worktrees/

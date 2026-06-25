@@ -55,19 +55,7 @@ function isChangelogMaintenanceCommit(subject) {
 	return /^(?:docs|chore)(?:\([^)]+\))?:\s+.*\b(changelog|release)\b/iu.test(subject);
 }
 
-function collectCommits() {
-	const latestTag = maybeGit(["describe", "--tags", "--abbrev=0"]);
-	const head = maybeGit(["rev-parse", "HEAD"]);
-	let range = [];
-	if (latestTag) {
-		const latestTagCommit = maybeGit(["rev-list", "-n", "1", latestTag]);
-		if (latestTagCommit === head) {
-			const previousTag = maybeGit(["describe", "--tags", "--abbrev=0", `${latestTag}^`]);
-			range = previousTag ? [`${previousTag}..${latestTag}`] : [latestTag];
-		} else {
-			range = [`${latestTag}..HEAD`];
-		}
-	}
+function collectCommits(range = []) {
 	const raw = git(["log", "--format=%H%x1f%cs%x1f%s%x1e", ...range]);
 	return raw
 		.split("\x1e")
@@ -77,7 +65,34 @@ function collectCommits() {
 		.filter((commit) => !isChangelogMaintenanceCommit(commit.subject));
 }
 
-function buildChangelog(commits) {
+function tagVersion(tag) {
+	return tag.replace(/^v/iu, "");
+}
+
+function releaseRange(tag) {
+	const previousTag = maybeGit(["describe", "--tags", "--abbrev=0", `${tag}^`]);
+	return previousTag ? [`${previousTag}..${tag}`] : [tag];
+}
+
+function collectChangelogSections() {
+	const latestTag = maybeGit(["describe", "--tags", "--abbrev=0"]);
+	if (!latestTag) return [{ heading: `${packageJson.version} - ${(new Date()).toISOString().slice(0, 10)}`, commits: collectCommits() }];
+
+	const head = maybeGit(["rev-parse", "HEAD"]);
+	const latestTagCommit = maybeGit(["rev-list", "-n", "1", latestTag]);
+	const releaseCommits = collectCommits(releaseRange(latestTag));
+	const releaseDate = releaseCommits[0]?.date ?? new Date().toISOString().slice(0, 10);
+	const releaseSection = { heading: `${tagVersion(latestTag)} - ${releaseDate}`, commits: releaseCommits };
+
+	if (latestTagCommit === head) return [releaseSection];
+
+	const unreleasedCommits = collectCommits([`${latestTag}..HEAD`]);
+	return unreleasedCommits.length > 0
+		? [{ heading: "Unreleased", commits: unreleasedCommits }, releaseSection]
+		: [releaseSection];
+}
+
+function appendCommitGroups(lines, commits) {
 	const groups = new Map(sectionOrder.map((section) => [section, []]));
 	for (const commit of commits) {
 		const parsed = parseSubject(commit.subject);
@@ -87,7 +102,14 @@ function buildChangelog(commits) {
 		}
 	}
 
-	const latestCommitDate = commits[0]?.date ?? new Date().toISOString().slice(0, 10);
+	for (const section of sectionOrder) {
+		const entries = groups.get(section) ?? [];
+		if (entries.length === 0) continue;
+		lines.push(`### ${section}`, "", ...entries, "");
+	}
+}
+
+function buildChangelog(sections) {
 	const lines = [
 		"# Changelog",
 		"",
@@ -95,20 +117,17 @@ function buildChangelog(commits) {
 		"",
 		"Entries are inferred from conventional git commit messages. Regenerate with `npm run changelog`.",
 		"",
-		`## ${packageJson.version} - ${latestCommitDate}`,
-		"",
 	];
 
-	for (const section of sectionOrder) {
-		const entries = groups.get(section) ?? [];
-		if (entries.length === 0) continue;
-		lines.push(`### ${section}`, "", ...entries, "");
+	for (const { heading, commits } of sections) {
+		lines.push(`## ${heading}`, "");
+		appendCommitGroups(lines, commits);
 	}
 
 	return `${lines.join("\n").trimEnd()}\n`;
 }
 
-const next = buildChangelog(collectCommits());
+const next = buildChangelog(collectChangelogSections());
 if (process.argv.includes("--check")) {
 	const current = readFileSync(changelogPath, "utf8");
 	if (current !== next) {

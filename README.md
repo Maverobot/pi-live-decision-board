@@ -2,7 +2,7 @@
 
 A [Pi](https://pi.dev) package that adds a live, mutable goal, assumptions, and decisions board to Pi coding sessions.
 
-The board is visible while the agent works, editable by the user, writable by the model through a tool, injected into future model context, and enforced before stale active-item mutations.
+The board is visible while the agent works, editable by the user, writable by the model through an explicit tool, and visible-only by default. Use `/board-inject` or `decision_board.list` when you want the current board to become model context.
 
 ![Expanded live decision board in Pi](docs/live-decision-board.png)
 
@@ -37,7 +37,8 @@ pi -e .
 | `/assume <text>` | Quick capture: add an active assumption |
 | `/decide <text>` | Quick capture: add an active decision |
 | `/board-cleanup` | TUI-only manual review of active board items and archive obvious historical entries after confirmation |
-| `/board-snapshot` | Show the active board context snapshot as a visible message |
+| `/board-inject` | Review active board items, then inject one explicit board snapshot into the next model call |
+| `/board-snapshot` | Show the active board snapshot as a visible message without injecting it into model context |
 | `/board-history` | Show active plus inactive archived board history as a visible message |
 | `/board-toggle` | Collapse or expand the persistent board body while keeping the summary line visible |
 
@@ -71,14 +72,15 @@ Prompt guidance tells the model to keep one current goal plus assumptions and de
 
 - Board state is persisted in Pi session custom entries and restored from the active branch.
 - The widget shows a compact summary followed by indented Goal, Decisions, and Assumptions sections with all active items by default; `/board-toggle` collapses the body while keeping the summary line visible. Item keys are hidden in the primary widget to reduce visual noise. Footer status and titled separator lines are intentionally suppressed to avoid duplicate or noisy board chrome.
-- `/board-snapshot` records the active context view (active items plus board rules) as a visible message.
-- `/board-history` records a visible board-history view with active items plus inactive archived items retained after archive or cleanup actions.
+- The persistent widget is passive: it displays active board items but does not automatically inject them into provider context.
+- `/board-snapshot` records a visible board view for the transcript only.
+- `/board-inject` opens the cleanup review in TUI mode, then queues one hidden board snapshot for the next model call. The injection is one-shot and bound to both board version and runtime epoch: if the board changes or the branch/session tree restores before the next provider context event, the pending injection is consumed without injecting the changed board.
 - `/board-manage` is the primary TUI mutation UI for existing board items: `↑↓/j/k` select, `enter/e` edit, `r` archive, `c` clear active, `q/esc` close. It hides item keys by default because actions are selection-based, but rows include item kind for context. Edit rewrites the selected item text in place; archive and clear-active remove items from active context while retaining history. When old guidance is no longer current, archive it; if new current guidance is needed, add a new goal, assumption, or decision.
 - `/board-cleanup` lets users manually select any active item for archive: `space` toggles the selected row, and toggling a keep/review row marks it as an archive override before `enter` opens the confirmation.
 - Item keys remain available in `/board-history`, cleanup review, markdown, and item-targeted slash commands for precise references, but the keyboard manager is the preferred workflow.
-- The `context` hook removes stale board-generated context and injects one fresh board snapshot into provider requests when active items or a pending stale-enforcement barrier exist.
-- User/discussion-loop edits while the agent is busy queue a steering message so the next model turn sees the updated board.
-- Active items are enforced in context and block stale `write`, `edit`, and non-read-only `bash` calls until the fresh board has been injected or returned by `decision_board`.
+- Later turns do not keep receiving board contents unless the user injects again or the agent explicitly calls `decision_board.list`.
+- User/discussion-loop edits while the agent is busy update the widget and history but do not steer the worker by default.
+- Active items do not block `write`, `edit`, or mutating `bash` calls in the default visible-only mode.
 
 ## Markdown board format
 
@@ -99,7 +101,9 @@ Item text is normalized to one line, terminal control bytes are stripped, and ea
 
 ## Active vs archived items
 
-Every item on the active board is enforced as current context. The agent should treat the Goal, assumptions, and decisions as relevant before mutating files.
+Every active item is shown on the visible board. Active items become model context only when explicitly injected with `/board-inject`, shown through `decision_board.list`, or returned by a `decision_board` mutation.
+
+Before injecting or relying on active items, archive stale entries with /board-manage, /board-cleanup, or decision_board.archive so outdated context does not steer the session.
 
 There is at most one active Goal. Use it for the current objective. Use Assumptions for uncertain or contextual facts, and Decisions for durable choices or constraints that should guide future work. Archive Decisions once they become historical implementation details.
 
@@ -112,7 +116,7 @@ The board is the current working context, not a changelog. Add or keep one Goal 
 Good board items:
 
 - "Use keyboard-first board management unless Pi documents mouse support."
-- "Active items should block stale mutations until the next board injection or fresh `decision_board` result."
+- "Use `/board-inject` only after reviewing active items for stale guidance."
 - "Assumption: keep defaults stable until the user requests a cleanup policy change."
 
 Bad active board items:
@@ -169,7 +173,7 @@ npm run changelog
 npm run changelog:check
 ```
 
-The tests exercise state helpers, goal/assumption/decision command and tool registration, context injection, steering, markdown parsing, cleanup review, and stale active-item mutation blocking.
+The tests exercise state helpers, command/tool registration, context injection, markdown parsing, cleanup review, and explicit injection and listing flows with visible-only defaults.
 
 ## License
 

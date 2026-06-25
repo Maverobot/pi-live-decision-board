@@ -1,9 +1,8 @@
 /**
  * Live Decision Board
  *
- * A Pi extension that keeps a visible, editable goal/assumptions/decisions board,
- * injects the latest board into model context, and blocks stale active-item
- * mutations until the board has been injected or returned by the tool.
+ * A Pi extension that keeps a visible, editable goal/assumptions/decisions board with
+ * explicit, user-driven model-context injection.
  */
 
 import { StringEnum } from "@earendil-works/pi-ai";
@@ -58,8 +57,8 @@ const BOARD_CONTEXT_TYPES = new Set([CONTEXT_CUSTOM_TYPE, VISIBLE_CUSTOM_TYPE, D
 
 const ACTIVE_BOARD_NUDGE_LIMIT = 12;
 const MAX_BOARD_ITEM_TEXT_LENGTH = 500;
-const BOARD_MUTATION_BATCH_RULE = "After decision_board mutates the board, reconcile the fresh board context returned by the tool before continuing file edits.";
-const BOARD_MUTATION_FRESH_CONTEXT_HINT = "Board changed; this tool result includes the fresh board context, so same-turn file edits may continue after reconciling it.";
+const BOARD_MUTATION_BATCH_RULE = "After decision_board returns a board snapshot, reconcile it before using it as current context.";
+const BOARD_MUTATION_FRESH_CONTEXT_HINT = "This tool result includes the fresh board snapshot because decision_board was called explicitly.";
 
 const BOARD_ITEM_STATUSES: BoardStatus[] = ["active", "archived"];
 const BOARD_ITEM_STRENGTHS: BoardStrength[] = ["soft", "hard"];
@@ -522,10 +521,11 @@ export function formatBoardForPrompt(board: BoardState): string {
 	const goals = active.filter((item) => item.kind === "goal");
 	const assumptions = active.filter((item) => item.kind === "assumption");
 	const decisions = active.filter((item) => item.kind === "decision");
-	const lines = [`## Live Goal, Assumptions & Decisions — version ${board.version}`, ""];
+	const lines = [`## Explicit Board Snapshot — version ${board.version}`, ""];
 	lines.push("Rules:");
-	lines.push("- Treat every active item as enforced current context before mutating files.");
-	lines.push("- If current work conflicts with this board, reconcile before continuing.");
+	lines.push("- This snapshot is visible to the agent only because it was explicitly injected, listed, or returned by decision_board.");
+	lines.push("- Treat active items as current context only after checking they still match the user's current scope.");
+	lines.push("- If an item looks stale, archive it before relying on it.");
 	lines.push("- Keep at most one active Goal plus assumptions or decisions that affect future behavior; do not use the board as an implementation log.");
 	lines.push("- When scope or goal changes, archive routine stale/deprecated items after listing the board; use decision_board.review_cleanup for ambiguous current-context changes.");
 	lines.push(`- ${BOARD_MUTATION_BATCH_RULE}`);
@@ -1374,6 +1374,7 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 	let board = createEmptyBoard();
 	let lastInjectedBoardVersion = 0;
 	let boardEpoch = 0;
+	let pendingBoardInjection: { version: number; epoch: number } | undefined;
 	let widgetExpanded = true;
 
 	function persist(): void {
@@ -1389,17 +1390,8 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 		ctx.ui.setWidget("decision-board", (_tui, theme) => new Text(formatBoardWidgetText(board, theme, { collapsed: !widgetExpanded }), 0, 0));
 	}
 
-	function notifyBoardChanged(previousVersion: number, ctx: ExtensionContext, source: BoardSource): void {
-		if (ctx.isIdle() || source === "agent") return;
-		pi.sendMessage(
-			{
-				customType: DELTA_CUSTOM_TYPE,
-				content: `Live Decision Board changed from v${previousVersion} to v${board.version}. The next model call will receive the fresh board context before continuing.`,
-				display: true,
-				details: { previousVersion, boardVersion: board.version },
-			},
-			{ deliverAs: "steer", triggerTurn: true },
-		);
+	function notifyBoardChanged(_previousVersion: number, _ctx: ExtensionContext, _source: BoardSource): void {
+		// Visible-only default: board edits update the widget/history but do not steer the model.
 	}
 
 	function commitBoard(next: BoardState, ctx: ExtensionContext, source: BoardSource): { changed: boolean; previousVersion: number } {
@@ -1479,6 +1471,33 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 		} as ContextMessage;
 	}
 
+	function clearPendingBoardInjection(): void {
+		pendingBoardInjection = undefined;
+	}
+
+	function hasInjectableBoardContext(): boolean {
+		return activeBoardItems(board).length > 0;
+	}
+
+	function queueBoardInjection(ctx: ExtensionContext): boolean {
+		if (!hasInjectableBoardContext()) {
+			ctx.ui.notify("No active board items to inject", "info");
+			return false;
+		}
+		pendingBoardInjection = { version: board.version, epoch: boardEpoch };
+		pi.sendMessage(
+			{
+				customType: VISIBLE_CUSTOM_TYPE,
+				content: `Live Decision Board injection requested for Board v${board.version}. The next model call will receive one explicit board snapshot.`,
+				display: true,
+				details: { boardVersion: board.version, inject: true },
+			},
+			{ deliverAs: "steer", triggerTurn: true },
+		);
+		ctx.ui.notify(`Queued explicit board injection for the next model call (Board v${board.version})`, "info");
+		return true;
+	}
+
 	function markBoardObservedFromToolResult(changed: boolean): void {
 		if (changed) lastInjectedBoardVersion = board.version;
 	}
@@ -1487,6 +1506,7 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 		board = restoreBoardFromEntries(ctx.sessionManager.getBranch() as SessionEntryLike[]);
 		lastInjectedBoardVersion = 0;
 		boardEpoch += 1;
+		clearPendingBoardInjection();
 		updateUi(ctx);
 	}
 
@@ -1562,6 +1582,7 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 	type CleanupReviewRunResult = {
 		changed: boolean;
 		appliedRecommendations: number;
+		completed: boolean;
 	};
 
 	async function runCleanupReview(
@@ -1579,10 +1600,10 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 			(tui, theme, _keybindings, done) => new BoardCleanupComponent(recommendations, theme, done, () => tui.requestRender()),
 			{ overlay: true, overlayOptions: { width: "90%", minWidth: 70, maxHeight: "80%" } },
 		);
-		if (!result || result.type === "cancel") return { changed: false, appliedRecommendations: 0 };
+		if (!result || result.type === "cancel") return { changed: false, appliedRecommendations: 0, completed: false };
 		if (boardEpoch !== baseEpoch) {
 			ctx.ui.notify(staleMessage, "warning");
-			return { changed: false, appliedRecommendations: 0 };
+			return { changed: false, appliedRecommendations: 0, completed: false };
 		}
 
 		const actionableRecommendations = result.recommendations.filter(
@@ -1590,18 +1611,18 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 		);
 		if (actionableRecommendations.length === 0) {
 			ctx.ui.notify(noActionableMessage, "info");
-			return { changed: false, appliedRecommendations: 0 };
+			return { changed: false, appliedRecommendations: 0, completed: true };
 		}
 
 		const impact = summarizeBoardCleanupImpact(board, result.recommendations);
 		const confirmed = await ctx.ui.confirm("Apply Board Cleanup?", formatCleanupImpactForConfirmation(impact, actionableRecommendations));
-		if (!confirmed) return { changed: false, appliedRecommendations: 0 };
+		if (!confirmed) return { changed: false, appliedRecommendations: 0, completed: false };
 		if (boardEpoch !== baseEpoch) {
 			ctx.ui.notify(staleMessage, "warning");
-			return { changed: false, appliedRecommendations: 0 };
+			return { changed: false, appliedRecommendations: 0, completed: false };
 		}
 		const changed = safeApplyBoard(ctx, "Cleaned board", () => applyBoardCleanup(board, result.recommendations));
-		return { changed, appliedRecommendations: actionableRecommendations.length };
+		return { changed, appliedRecommendations: actionableRecommendations.length, completed: true };
 	}
 
 	async function cleanupBoard(ctx: ExtensionContext): Promise<void> {
@@ -1613,6 +1634,29 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 		await runCleanupReview(ctx, recommendations);
 	}
 
+	async function injectBoard(ctx: ExtensionContext): Promise<void> {
+		clearPendingBoardInjection();
+		if (!hasInjectableBoardContext()) {
+			ctx.ui.notify("No active board items to inject", "info");
+			return;
+		}
+
+		if (ctx.mode === "tui") {
+			const result = await runCleanupReview(ctx, recommendBoardCleanup(board), {
+				noActionableMessage: "Board inject: no cleanup changes selected",
+				staleMessage: "Live Decision Board changed while injection review was open; rerun /board-inject on the latest board.",
+			});
+			if (!result.completed) {
+				ctx.ui.notify("Board injection cancelled", "info");
+				return;
+			}
+		} else {
+			ctx.ui.notify("Injecting board without TUI cleanup review; run /board-cleanup first if any active item looks stale.", "warning");
+		}
+
+		queueBoardInjection(ctx);
+	}
+
 	pi.on("session_start", async (_event, ctx) => {
 		restoreBoard(ctx);
 	});
@@ -1622,8 +1666,15 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 	});
 
 	pi.registerCommand("board-snapshot", {
-		description: "Show the active context snapshot of the live goal/assumptions/decisions board as a visible message",
+		description: "Show the active board snapshot as a visible message without injecting it into model context",
 		handler: async (_args, _ctx) => showBoard(),
+	});
+
+	pi.registerCommand("board-inject", {
+		description: "Review active board items, then inject one explicit board snapshot into the next model call",
+		handler: async (_args, ctx) => {
+			await injectBoard(ctx);
+		},
 	});
 
 	pi.registerCommand("board-history", {
@@ -1639,7 +1690,7 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 			ctx.ui.notify(
 				widgetExpanded
 					? "Live Decision Board widget expanded"
-					: "Live Decision Board widget collapsed; summary remains visible, and the board still updates, injects into context, and enforces active items.",
+					: "Live Decision Board widget collapsed; summary remains visible, and the board stays visible-only until explicitly injected.",
 				"info",
 			);
 		},
@@ -1729,11 +1780,12 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 		description: "List or update the live goal/assumptions/decisions board.",
 		promptSnippet: "List or update the current goal, assumptions, and decisions for the current project.",
 		promptGuidelines: [
-			"Use decision_board to record one current goal plus active assumptions or decisions and enforce them as the current contract for this work.",
-			"Use decision_board before acting on a decision that is not already recorded in the live board.",
-			"Use decision_board as a current-context contract, not as an implementation log for progress updates, tests run, files changed, or completed review batches.",
+			"The Live Decision Board is visible-only by default; do not treat it as hidden current context unless the user explicitly injects it, explicitly asks about it, or you call decision_board.",
+			"Use decision_board to list or update one current goal plus active assumptions or decisions when the user asks you to use the board or when a decision must persist for future behavior.",
+			"Use decision_board as a current-context contract only after it has been explicitly listed, injected, or returned by a decision_board mutation.",
+			"Do not use the board as an implementation log for progress updates, tests run, files changed, or completed review batches.",
 			BOARD_MUTATION_BATCH_RULE,
-			"When scope changes, goals change, or active board items become stale, clean the board automatically: list it, archive routine deprecated items with observed itemVersion and reason, and use decision_board.review_cleanup for ambiguous current-context changes.",
+			"When scope changes, goals change, or active board items become stale, clean the board: list it, archive routine deprecated items with observed itemVersion and reason, and use decision_board.review_cleanup for ambiguous current-context changes.",
 			"Do not add active board items saying cleanup happened; do not spawn separate cleanup agents unless the user explicitly requests them.",
 			"Use decision_board update only for same-meaning text corrections after listing the current board; include the observed itemVersion.",
 			"Use decision_board archive only for routine deprecated or stale active items after listing the current board; include the observed itemVersion and a reason, and prefer review_cleanup when current-context impact is ambiguous.",
@@ -1858,24 +1910,15 @@ export default function liveDecisionBoard(pi: ExtensionAPI): void {
 
 	pi.on("context", async (event) => {
 		const filtered = event.messages.filter((message) => !BOARD_CONTEXT_TYPES.has(getCustomType(message)));
-		if (activeBoardItems(board).length === 0 && !hasUninjectedEnforcedChanges(board, lastInjectedBoardVersion)) {
+		const pending = pendingBoardInjection;
+		clearPendingBoardInjection();
+		if (!pending || pending.version !== board.version || pending.epoch !== boardEpoch || !hasInjectableBoardContext()) {
 			return { messages: filtered };
 		}
-		lastInjectedBoardVersion = board.version;
 		return { messages: [boardContextForProvider(), ...filtered] };
 	});
 
-	pi.on("before_agent_start", async () => {
-		if (activeBoardItems(board).length === 0 && !hasUninjectedEnforcedChanges(board, lastInjectedBoardVersion)) return;
-		return { message: boardContextForSession() };
-	});
+	pi.on("before_agent_start", async () => undefined);
 
-	pi.on("tool_call", async (event) => {
-		if (!isMutatingToolCall(event.toolName, event.input as Record<string, unknown>)) return;
-		if (!hasUninjectedEnforcedChanges(board, lastInjectedBoardVersion)) return;
-		return {
-			block: true,
-			reason: `Live Decision Board changed after the agent last received it in provider context. Current board v${board.version}, injected v${lastInjectedBoardVersion}. Re-read/reconcile the board before mutating files.`,
-		};
-	});
+	pi.on("tool_call", async () => undefined);
 }

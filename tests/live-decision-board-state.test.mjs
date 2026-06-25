@@ -71,14 +71,17 @@ assert.equal(withArchivedGoalHistory.items.at(-1).status, "archived", "archived 
 assert.match(mod.formatBoardStatus(withSecondGoal), /1 goal/, "status summary includes the active goal count");
 
 const prompt = mod.formatBoardForPrompt(withSecondGoal);
-assert.match(prompt, /Live Goal, Assumptions & Decisions — version 4/);
+assert.match(prompt, /Explicit Board Snapshot — version 4/);
+assert.match(prompt, /This snapshot is visible to the agent only because it was explicitly injected, listed, or returned by decision_board/);
+assert.match(prompt, /Treat active items as current context only after checking they still match the user's current scope/);
+assert.match(prompt, /If an item looks stale, archive it before relying on it/);
+assert.doesNotMatch(prompt, /enforced current context/i);
+assert.doesNotMatch(prompt, /before mutating files/i);
 assert.match(prompt, /Goal:/);
 assert.match(prompt, /G2: Polish board taxonomy/);
 assert.doesNotMatch(prompt, /G1: Ship a focused board workflow/, "archived goals leave active prompt context");
 assert.match(prompt, /A1: Backend uses Node 22/);
 assert.match(prompt, /D1: Build as a Pi extension first/);
-assert.match(prompt, /Treat every active item as enforced current context before mutating files/);
-assert.match(prompt, /fresh board context returned by the tool/, "prompt tells agents to reconcile same-turn tool-returned board context");
 assert.match(prompt, /scope or goal changes.*decision_board\.review_cleanup/i, "prompt tells agents to clean stale board items when scope changes");
 assert.doesNotMatch(prompt, /\[(?:proposed|accepted),/i, "prompt does not expose retired status metadata");
 assert.doesNotMatch(prompt, /\bsoft\b|\bhard\b/, "prompt metadata should hide legacy strength labels");
