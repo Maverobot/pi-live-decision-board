@@ -288,7 +288,7 @@ This mirrors the existing board epoch guard pattern used by interactive editors/
 ** Cleanup suggestions are not board items
 Cleanup suggestions should be transient UI state or a separate custom entry excluded from provider context.
 
-Do not store cleanup suggestions as board items because active items are injected into model context.
+Do not store cleanup suggestions as board items because active items are automatically sent as non-binding consistency context.
 
 ** Main-agent auto cleanup isolation
 Auto cleanup recommendations should stay scoped to board hygiene:

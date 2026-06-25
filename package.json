@@ -1,7 +1,7 @@
 {
   "name": "pi-live-decision-board",
   "version": "0.1.7",
-  "description": "Pi extension for a visible, mutable goal, assumptions, and decisions board with explicit context injection.",
+  "description": "Pi extension for a visible, mutable goal, assumptions, and decisions board with non-binding consistency context.",
   "type": "module",
   "license": "MIT",
   "keywords": [

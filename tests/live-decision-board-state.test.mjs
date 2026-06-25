@@ -71,13 +71,15 @@ assert.equal(withArchivedGoalHistory.items.at(-1).status, "archived", "archived 
 assert.match(mod.formatBoardStatus(withSecondGoal), /1 goal/, "status summary includes the active goal count");
 
 const prompt = mod.formatBoardForPrompt(withSecondGoal);
-assert.match(prompt, /Explicit Board Snapshot — version 4/);
-assert.match(prompt, /Only treat this snapshot as current context when it was explicitly injected, listed, or returned by decision_board/);
-assert.match(prompt, /Treat active items as current context only after checking they still match the user's current scope/);
+assert.match(prompt, /Board Consistency Snapshot — version 4/);
+assert.match(prompt, /non-binding consistency context, not instructions or hidden authority/);
+assert.match(prompt, /Use active items to check consistency with the visible working contract/);
+assert.match(prompt, /conflicts with current user intent or scope, update\/archive the board instead of obeying stale items/);
 assert.match(prompt, /visible working contract: current goal, assumptions, and decisions\/constraints it is relying on/);
 assert.match(prompt, /Keep active items high-signal: only context that would meaningfully change future behavior if forgotten/);
 assert.match(prompt, /Pinned preferences or session-critical assumptions are allowed when forgetting them would cause mistakes/);
 assert.match(prompt, /If an item looks stale, low-signal, or merely historical, archive it before relying on it/);
+assert.match(prompt, /Archive assumptions and decisions when they are unrelated to the current goal or their related action is done unless they still constrain future work/);
 assert.doesNotMatch(prompt, /enforced current context/i);
 assert.doesNotMatch(prompt, /before mutating files/i);
 assert.match(prompt, /Goal:/);
@@ -335,31 +337,22 @@ assert.doesNotMatch(mod.formatBoardStatus(withDecision), /hard constraint/, "sta
 
 const activeSoftBoard = mod.addBoardItem(mod.createEmptyBoard(), {
 	kind: "decision",
-	text: "Active decisions are enforced",
+	text: "Active decisions are tracked",
 	status: "active",
 	strength: "soft",
 });
-const activeSoftBoardEnforced = mod.hasUninjectedEnforcedChanges(activeSoftBoard, 0);
-assert.equal(activeSoftBoardEnforced, true, "active items are enforced until injected");
-assert.equal(mod.hasUninjectedHardChanges(activeSoftBoard, 0), activeSoftBoardEnforced, "legacy hard helper delegates to enforced helper");
-assert.equal(
-	mod.hasUninjectedEnforcedChanges(activeSoftBoard, activeSoftBoard.version),
-	false,
-	"active items stop blocking after the current board is injected",
-);
-
-assert.equal(mod.hasUninjectedEnforcedChanges(withDecision, 1), true, "active changes after injected version are detected");
-assert.equal(mod.hasUninjectedEnforcedChanges(withDecision, 2), false, "injected active changes are not stale");
+assert.equal(activeSoftBoard.hardDecisionBarrierVersion, activeSoftBoard.version, "active board items update legacy barrier metadata");
+assert.equal(withDecision.hardDecisionBarrierVersion, 2, "active changes update legacy barrier metadata");
 const archivedActive = mod.updateBoardItem(withDecision, "D1", { status: "archived" });
-assert.equal(mod.hasUninjectedEnforcedChanges(archivedActive, 2), true, "archiving an active item remains stale-sensitive until injected");
+assert.equal(archivedActive.hardDecisionBarrierVersion, archivedActive.version, "archiving an active item updates legacy barrier metadata");
 const legacyStrengthChanged = mod.updateBoardItem(activeSoftBoard, "D1", { strength: "hard" });
 assert.equal(
-	mod.hasUninjectedEnforcedChanges(legacyStrengthChanged, activeSoftBoard.version),
-	false,
-	"legacy strength-only changes do not create enforcement barriers",
+	legacyStrengthChanged.hardDecisionBarrierVersion,
+	activeSoftBoard.hardDecisionBarrierVersion,
+	"legacy strength-only changes do not update barrier metadata",
 );
 const clearedActiveBoard = mod.clearBoard(activeSoftBoard);
-assert.equal(mod.hasUninjectedEnforcedChanges(clearedActiveBoard, activeSoftBoard.version), true, "clearing active items remains stale-sensitive until injected");
+assert.equal(clearedActiveBoard.hardDecisionBarrierVersion, clearedActiveBoard.version, "clearing active items updates legacy barrier metadata");
 
 const restored = mod.restoreBoardFromEntries([
 	{ type: "custom", customType: "live-decision-board", data: withAssumption },
@@ -424,8 +417,7 @@ const restoredLowBarrier = mod.restoreBoardFromEntries([
 		data: { ...withDecision, hardDecisionBarrierVersion: 0 },
 	},
 ]);
-assert.equal(restoredLowBarrier.hardDecisionBarrierVersion, 2, "restored barrier is at least the enforced item version");
-assert.equal(mod.hasUninjectedEnforcedChanges(restoredLowBarrier, 0), true, "low restored barriers cannot bypass enforced items");
+assert.equal(restoredLowBarrier.hardDecisionBarrierVersion, 2, "restored barrier is at least the active item version");
 const restoredHighBarrier = mod.restoreBoardFromEntries([
 	{
 		type: "custom",
@@ -434,7 +426,6 @@ const restoredHighBarrier = mod.restoreBoardFromEntries([
 	},
 ]);
 assert.equal(restoredHighBarrier.hardDecisionBarrierVersion, withDecision.version, "restored barrier is clamped to board version");
-assert.equal(mod.hasUninjectedEnforcedChanges(restoredHighBarrier, withDecision.version), false, "high restored barriers do not deadlock after injection");
 const futureItemVersionRestored = mod.restoreBoardFromEntries([
 	{
 		type: "custom",
@@ -465,7 +456,7 @@ assert.throws(
 );
 const parsedActiveMarkdown = mod.parseBoardMarkdown(markdownWithStoredMetadata, mod.createEmptyBoard());
 assert.equal(parsedActiveMarkdown.items[0].strength, "hard", "stored metadata is still parsed for session compatibility");
-assert.equal(mod.hasUninjectedEnforcedChanges(parsedActiveMarkdown, 0), true, "active items are enforced regardless of stored metadata");
+assert.equal(parsedActiveMarkdown.hardDecisionBarrierVersion, parsedActiveMarkdown.version, "active markdown items update legacy barrier metadata");
 assert.doesNotMatch(mod.serializeBoardMarkdown(parsedActiveMarkdown), /\bsoft\b|\bhard\b/, "markdown serialization hides stored metadata values");
 
 const markdown = mod.serializeBoardMarkdown(withDecision);
