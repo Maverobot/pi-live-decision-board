@@ -1,5 +1,7 @@
 # pi-live-decision-board
 
+> **Archived:** This package is no longer maintained or recommended for new use. It was an experiment in making long Pi sessions keep an explicit goal, assumptions, and decisions board, but the standalone package adds more workflow and maintenance overhead than its value justifies. If the idea comes back, it should probably be a much smaller built-in Pi feature instead of a separate extension.
+
 A [Pi](https://pi.dev) package that adds a live, mutable goal, assumptions, and decisions board to Pi coding sessions.
 
 The board is visible while the agent works, editable by the user, writable by the model through a tool, injected into future model context, and enforced before stale active-item mutations.
